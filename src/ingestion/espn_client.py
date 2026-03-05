@@ -68,7 +68,7 @@ def  get_team_schedule():
             "id": event.get("id"),
             "date": event.get("date"),
             "name": event.get("name"),
-            "status": event.get("status", {}).get("type", {}).get("description"),
+            "status": competition.get("status", {}).get("type", {}).get("description"),
             "season_type": season_type,
 
             # Location
