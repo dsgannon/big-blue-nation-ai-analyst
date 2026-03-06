@@ -169,51 +169,117 @@ def get_season_boxscores(schedule, season="2025-26"):
 
     return all_player_stats, all_opp_stats
 
-# Test it
+
+def get_previous_season_schedule(season_year="2025"):
+    """Get Kentucky's schedule for a previous season including tournament games"""
+    all_events = []
+    
+    # Season types: 2 = regular season + conference tournament, 3 = NCAA tournament
+    for season_type in [2, 3]:
+        url = f"{BASE_URL}/teams/{KENTUCKY_TEAM_ID}/schedule?season={season_year}&seasontype={season_type}"
+        response = requests.get(url)
+        data = response.json()
+        events = data.get("events", [])
+        
+        for event in events:
+            competition = event.get("competitions", [{}])[0]
+            competitors = competition.get("competitors", [])
+            home_team = next((c for c in competitors if c.get("homeAway") == "home"), {})
+            away_team = next((c for c in competitors if c.get("homeAway") == "away"), {})
+            
+            # Only include completed games
+            status = competition.get("status", {}).get("type", {}).get("description")
+            if status not in ["Final", "STATUS_FINAL"]:
+                continue
+                
+            all_events.append({
+                "id": event.get("id"),
+                "date": event.get("date"),
+                "name": event.get("name"),
+                "status": status,
+                "season_type": "NCAA Tournament" if season_type == 3 else event.get("seasonType", {}).get("name"),
+                "home_team": home_team.get("team", {}).get("displayName"),
+                "away_team": away_team.get("team", {}).get("displayName"),
+                "home_score": home_team.get("score", {}).get("displayValue") if isinstance(home_team.get("score"), dict) else home_team.get("score"),
+                "away_score": away_team.get("score", {}).get("displayValue") if isinstance(away_team.get("score"), dict) else away_team.get("score"),
+            })
+    print(f"  Found {len(all_events)} completed games for {int(season_year)-1}-{season_year} season")    
+    return all_events
+
+def generate_synthetic_data(player_stats, noise_pct=0.15, multiplier=3):
+    """Generate synthetic training data by adding controlled noise to real games"""
+    import random
+    random.seed(42)
+    
+    synthetic = []
+    numeric_stats = [
+        'minutes', 'points', 'rebounds', 'assists', 'turnovers',
+        'steals', 'blocks', 'fg_made', 'fg_att', 'three_made',
+        'three_att', 'ft_made', 'ft_att'
+    ]
+    
+    for _ in range(multiplier):
+        for stat in player_stats:
+            new_stat = stat.copy()
+            new_stat['synthetic'] = True
+            
+            # Add controlled noise to numeric stats
+            for col in numeric_stats:
+                val = stat[col]
+                if val > 0:
+                    noise = random.uniform(-noise_pct, noise_pct)
+                    new_val = round(val * (1 + noise))
+                    new_stat[col] = max(0, new_val)
+            
+            # Recalculate percentages
+            new_stat['fg_pct'] = round(new_stat['fg_made'] / new_stat['fg_att'], 3) if new_stat['fg_att'] > 0 else 0
+            new_stat['three_pct'] = round(new_stat['three_made'] / new_stat['three_att'], 3) if new_stat['three_att'] > 0 else 0
+            new_stat['ft_pct'] = round(new_stat['ft_made'] / new_stat['ft_att'], 3) if new_stat['ft_att'] > 0 else 0
+            
+            synthetic.append(new_stat)
+    
+    print(f"  Generated {len(synthetic)} synthetic records from {len(player_stats)} real records")
+    return synthetic
+
 if __name__ == "__main__":
     from espn_client import get_team_schedule
 
     print("=" * 55)
-    print("  KENTUCKY BASKETBALL — BOXSCORE TEST")
+    print("  KENTUCKY BASKETBALL — FULL DATA COLLECTION")
     print("=" * 55)
 
-    # Test single game first
-    print("\n🏀 Testing single game boxscore...")
-    game_id = "401826746"  # Nicholls game
-    result = get_game_boxscore(game_id, "2025-11-05")
+    # Current season
+    print("\n📊 2025-26 Season (current)...")
+    current_schedule = get_team_schedule()
+    current_stats, current_opp = get_season_boxscores(current_schedule, season="2025-26")
+    print(f"  Player records: {len(current_stats)}")
+
+    # Previous season
+    print("\n📊 2024-25 Season (previous)...")
+    prev_schedule = get_previous_season_schedule("2025")
+    prev_stats, prev_opp = get_season_boxscores(prev_schedule, season="2024-25")
+    print(f"  Player records: {len(prev_stats)}")
+
+    # Combine real data
+    all_real_stats = current_stats + prev_stats
+    print(f"\n✅ Total real records: {len(all_real_stats)}")
+
+    # Generate synthetic data
+    print("\n🔄 Generating synthetic data...")
+    synthetic_stats = generate_synthetic_data(all_real_stats, noise_pct=0.15, multiplier=2)
+    print(f"  Synthetic records: {len(synthetic_stats)}")
+
+    # Final combined dataset
+    all_stats = all_real_stats + synthetic_stats
+    print(f"\n🎯 Total training records: {len(all_stats)}")
+
+    # Show player breakdown
+    from collections import defaultdict
+    player_totals = defaultdict(int)
+    for stat in all_real_stats:
+        player_totals[stat['player_name']] += 1
     
-    if result:
-        player_stats, opp_stats = result
-        print(f"\n  Players with stats: {len(player_stats)}")
-        print(f"\n  {'Player':<25} {'MIN':<5} {'PTS':<5} {'REB':<5} {'AST':<5} {'FG':<8} {'3PT':<8}")
-        print(f"  {'-'*25} {'-'*5} {'-'*5} {'-'*5} {'-'*5} {'-'*8} {'-'*8}")
-        for p in player_stats:
-            fg_str = f"{p['fg_made']}/{p['fg_att']}"
-            three_str = f"{p['three_made']}/{p['three_att']}"
-            print(f"  {p['player_name']:<25} {str(p['minutes']):<5} {p['points']:<5} {p['rebounds']:<5} {p['assists']:<5} {fg_str:<8} {three_str:<8}")
-        
-        print(f"\n  Opponent totals: {opp_stats}")
-
-        # Now pull all completed games
-        print("\n📊 Pulling all season box scores...")
-        schedule = get_team_schedule()
-        all_stats, all_opp = get_season_boxscores(schedule)
-        print(f"\n  Total player-game records: {len(all_stats)}")
-        print(f"  Total games processed: {len(all_opp)}")
-    
-        # Show summary per player
-        from collections import defaultdict
-        player_totals = defaultdict(lambda: {"games": 0, "points": 0, "rebounds": 0, "assists": 0})
-        for stat in all_stats:
-            name = stat["player_name"]
-            player_totals[name]["games"] += 1
-            player_totals[name]["points"] += stat["points"]
-            player_totals[name]["rebounds"] += stat["rebounds"]
-            player_totals[name]["assists"] += stat["assists"]
-
-        print(f"\n  {'Player':<25} {'GP':<5} {'PPG':<7} {'RPG':<7} {'APG':<7}")
-        print(f"  {'-'*25} {'-'*5} {'-'*7} {'-'*7} {'-'*7}")
-        for name, totals in sorted(player_totals.items(), key=lambda x: x[1]['points'], reverse=True):
-            g = totals['games']
-            print(f"  {name:<25} {g:<5} {totals['points']/g:<7.1f} {totals['rebounds']/g:<7.1f} {totals['assists']/g:<7.1f}")
-
+    print(f"\n{'Player':<25} {'Real Games':<12}")
+    print(f"{'-'*25} {'-'*12}")
+    for name, count in sorted(player_totals.items(), key=lambda x: x[1], reverse=True):
+        print(f"  {name:<25} {count:<12}")
