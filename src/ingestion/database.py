@@ -521,6 +521,12 @@ if __name__ == "__main__":
     splits = get_record_splits()
     player_stats, opp_stats = get_season_boxscores(schedule)
 
+    # Previous season
+    from boxscore_client import get_previous_season_schedule
+    print("\n📊 Fetching 2024-25 season...")
+    prev_schedule = get_previous_season_schedule("2025")
+    prev_stats, prev_opp = get_season_boxscores(prev_schedule, season="2024-25")
+
     print("\n💾 Saving to database...")
     save_players(roster)
     save_games(schedule)
@@ -530,6 +536,8 @@ if __name__ == "__main__":
     save_record_splits(splits)
     save_player_game_stats(player_stats)
     save_opponent_stats(opp_stats)
+    save_player_game_stats(prev_stats, season="2024-25")
+    save_opponent_stats(prev_opp, season="2024-25")
 
     print("\n📋 Verifying database...")
     print(f"  Players:            {len(get_all_players())}")
