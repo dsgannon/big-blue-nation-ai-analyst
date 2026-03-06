@@ -149,6 +149,59 @@ def create_tables():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS player_game_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_id TEXT,
+            game_date TEXT,
+            season TEXT,
+            player_id TEXT,
+            player_name TEXT,
+            jersey TEXT,
+            position TEXT,
+            opponent TEXT,
+            home_away TEXT,
+            starter INTEGER,
+            minutes INTEGER,
+            points INTEGER,
+            rebounds INTEGER,
+            assists INTEGER,
+            turnovers INTEGER,
+            steals INTEGER,
+            blocks INTEGER,
+            off_rebounds INTEGER,
+            def_rebounds INTEGER,
+            fouls INTEGER,
+            fg_made INTEGER,
+            fg_att INTEGER,
+            fg_pct REAL,
+            three_made INTEGER,
+            three_att INTEGER,
+            three_pct REAL,
+            ft_made INTEGER,
+            ft_att INTEGER,
+            ft_pct REAL,
+            updated_at TEXT,
+            UNIQUE(game_id, player_id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS opponent_game_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_id TEXT,
+            game_date TEXT,
+            season TEXT,
+            opponent TEXT,
+            points INTEGER,
+            rebounds INTEGER,
+            assists INTEGER,
+            turnovers INTEGER,
+            updated_at TEXT,
+            UNIQUE(game_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
     print("✅ Tables created successfully")
@@ -313,6 +366,85 @@ def save_record_splits(splits, season=CURRENT_SEASON):
     conn.close()
     print(f"✅ Saved {len(splits)} record splits to database")
 
+def save_player_game_stats(player_stats, season=CURRENT_SEASON):
+    """Save player box scores to database"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+
+    for stat in player_stats:
+        cursor.execute("""
+            INSERT OR REPLACE INTO player_game_stats
+            (game_id, game_date, season, player_id, player_name, jersey,
+             position, opponent, home_away, starter, minutes, points,
+             rebounds, assists, turnovers, steals, blocks, off_rebounds,
+             def_rebounds, fouls, fg_made, fg_att, fg_pct, three_made,
+             three_att, three_pct, ft_made, ft_att, ft_pct, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            stat["game_id"], stat["game_date"], season,
+            stat["player_id"], stat["player_name"], stat["jersey"],
+            stat["position"], stat["opponent"], stat["home_away"],
+            1 if stat["starter"] else 0,
+            stat["minutes"], stat["points"], stat["rebounds"],
+            stat["assists"], stat["turnovers"], stat["steals"],
+            stat["blocks"], stat["off_rebounds"], stat["def_rebounds"],
+            stat["fouls"], stat["fg_made"], stat["fg_att"], stat["fg_pct"],
+            stat["three_made"], stat["three_att"], stat["three_pct"],
+            stat["ft_made"], stat["ft_att"], stat["ft_pct"], now
+        ))
+
+    conn.commit()
+    conn.close()
+    print(f"✅ Saved {len(player_stats)} player game stats to database")
+
+def save_opponent_stats(opp_stats_list, season=CURRENT_SEASON):
+    """Save opponent team totals to database"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+
+    for opp in opp_stats_list:
+        if not opp.get("game_id"):
+            continue
+        cursor.execute("""
+            INSERT OR REPLACE INTO opponent_game_stats
+            (game_id, game_date, season, opponent, points, rebounds,
+             assists, turnovers, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?)
+        """, (
+            opp.get("game_id"), opp.get("game_date", ""),
+            season, opp.get("opponent"),
+            opp.get("points", 0), opp.get("rebounds", 0),
+            opp.get("assists", 0), opp.get("turnovers", 0),
+            now
+        ))
+
+    conn.commit()
+    conn.close()
+    print(f"✅ Saved {len(opp_stats_list)} opponent game stats to database")
+
+def get_player_stats(player_name=None, season=CURRENT_SEASON):
+    """Get player game stats, optionally filtered by player"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    if player_name:
+        cursor.execute("""
+            SELECT * FROM player_game_stats
+            WHERE season=? AND player_name=?
+            ORDER BY game_date
+        """, (season, player_name))
+    else:
+        cursor.execute("""
+            SELECT * FROM player_game_stats
+            WHERE season=?
+            ORDER BY game_date, player_name
+        """, (season,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
 def get_all_players(season=CURRENT_SEASON):
     conn = get_connection()
     cursor = conn.cursor()
@@ -371,6 +503,7 @@ if __name__ == "__main__":
         get_team_roster, get_team_schedule, get_kentucky_rankings,
         get_sec_standings, get_team_metrics, get_record_splits
     )
+    from boxscore_client import get_season_boxscores
 
     print("=" * 55)
     print("  KENTUCKY BASKETBALL — DATABASE TEST")
@@ -386,6 +519,7 @@ if __name__ == "__main__":
     standings = get_sec_standings()
     metrics = get_team_metrics()
     splits = get_record_splits()
+    player_stats, opp_stats = get_season_boxscores(schedule)
 
     print("\n💾 Saving to database...")
     save_players(roster)
@@ -394,18 +528,18 @@ if __name__ == "__main__":
     save_sec_standings(standings)
     save_metrics(metrics)
     save_record_splits(splits)
+    save_player_game_stats(player_stats)
+    save_opponent_stats(opp_stats)
 
     print("\n📋 Verifying database...")
-    print(f"  Players:       {len(get_all_players())}")
-    print(f"  Games:         {len(get_all_games())}")
-    print(f"  Completed:     {len(get_completed_games())}")
-    print(f"  Standings:     {len(get_latest_standings())}")
+    print(f"  Players:            {len(get_all_players())}")
+    print(f"  Games:              {len(get_all_games())}")
+    print(f"  Completed:          {len(get_completed_games())}")
+    print(f"  Standings:          {len(get_latest_standings())}")
+    print(f"  Player game stats:  {len(get_player_stats())}")
     latest = get_latest_metrics()
-    print(f"  Metrics saved: {'✅' if latest else '❌'}")
+    print(f"  Metrics saved:      {'✅' if latest else '❌'}")
 
     print("\n✅ Database complete!")
     print(f"  Season: {CURRENT_SEASON}")
     print(f"  Location: {DB_PATH}")
-
-
-    
