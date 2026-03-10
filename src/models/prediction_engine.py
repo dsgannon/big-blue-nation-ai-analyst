@@ -1,23 +1,32 @@
 """
 src/models/prediction_engine.py
 
-Big Blue Nation AI Analyst — Production Prediction Engine
-Packages all models and prediction logic from player_predictions.ipynb
+Big Blue Nation AI Analyst — Production Prediction Engine V2
+
+Improvements over V1:
+  - Temporal decay rolling averages (recent games weight more)
+  - Hot/cold streak indicator
+  - Injury-adjusted opponent score (uk_bpi_defense feature)
+  - Logistic regression win probability (replaces hybrid fixed-weight model)
+  - Falls back gracefully if win_prob_model not found
 
 Models:
-  - model_v3:        XGBoost player points predictor (MAE: 4.07)
-  - minutes_model:   XGBoost player minutes predictor (MAE: 4.1)
-  - opp_model_v4:    XGBoost opponent scoring predictor (MAE: 6.3)
-  - win_probability: Hybrid point-diff (60%) + BPI (40%) model
+  - model_v3.joblib        XGBoost player points (trained in model_v2.ipynb)
+  - minutes_model.joblib   XGBoost player minutes
+  - reb_model.joblib       XGBoost player rebounds
+  - ast_model.joblib       XGBoost player assists
+  - opp_model_v4.joblib    XGBoost opponent scoring (injury-aware via BPI defense)
+  - win_prob_model.joblib  Logistic regression win probability
+  - win_prob_scaler.joblib StandardScaler for win prob features
 
 Usage:
   from src.models.prediction_engine import PredictionEngine
   engine = PredictionEngine()
-  result = engine.predict_game(opponent='LSU Tigers', is_home=0, net_rank=120)
-  print(result)
+  result = engine.predict_game(opponent='LSU Tigers', is_home=0, net_rank=78)
 """
 
 import os
+import json
 import sqlite3
 import joblib
 import numpy as np
@@ -31,37 +40,61 @@ DB_PATH    = os.path.join(BASE_DIR, 'data', 'processed', 'kentucky_basketball.db
 MODELS_DIR = os.path.join(BASE_DIR, 'data', 'models')
 
 
-# ── Feature lists (must match training) ───────────────────────────────────────
+# ── Feature lists (must match training in model_v2.ipynb) ─────────────────────
+
+# V2 player points/rebounds/assists features (includes decay + hot_streak)
 FEATURE_COLS = [
+    # Standard rolling
     'points_roll3', 'points_roll5', 'points_season_avg',
     'rebounds_roll3', 'assists_roll3',
     'minutes_roll3', 'minutes_roll5',
     'fg_pct_roll3', 'fg_pct_roll5', 'three_pct_roll3',
     'turnovers_roll3', 'points_trend', 'minutes_trend',
+    # V2: temporal decay
+    'points_decay3', 'points_decay5',
+    'minutes_decay3', 'minutes_decay5',
+    'rebounds_decay3', 'assists_decay3',
+    # V2: hot/cold streak
+    'hot_streak', 'usage_trend',
+    # Context
     'is_home', 'game_number', 'starter',
     'is_current_season', 'season_segment',
     'days_rest', 'is_back_to_back',
     'opp_avg_points_allowed', 'opp_avg_rebounds', 'opp_avg_turnovers_forced',
-    'player_encoded', 'position_encoded', 'opponent_encoded'
+    'player_encoded', 'position_encoded', 'opponent_encoded',
+    # Chained minutes
+    'predicted_minutes',
 ]
 
 MINUTES_FEATURES = [
     'minutes_roll3', 'minutes_roll5', 'minutes_season_avg', 'minutes_trend',
-    'starter', 'is_home', 'game_number', 'is_current_season', 'season_segment',
-    'days_rest', 'is_back_to_back', 'player_encoded', 'position_encoded'
+    'minutes_decay3', 'minutes_decay5',
+    'starter', 'is_home', 'game_number',
+    'is_current_season', 'season_segment',
+    'days_rest', 'is_back_to_back',
+    'player_encoded', 'position_encoded',
 ]
 
 OPP_FEATURES = [
-    'net_rank', 'uk_is_home',
+    'uk_is_home',
     'opp_pts_roll3', 'opp_pts_roll5',
     'opp_fg_pct_roll3', 'opp_three_pct_roll3', 'opp_reb_roll3',
-    'uk_def_roll3', 'uk_def_roll5', 'uk_def_season'
+    'uk_def_roll3', 'uk_def_roll5', 'uk_def_season',
+    'uk_bpi_defense',   # V2: injury-aware via Kentucky's current BPI defense
 ]
 
-# Kentucky BPI (update each season)
+WIN_PROB_FEATURES = [
+    'pts_diff', 'reb_diff',
+    'uk_team_ast', 'uk_team_to', 'uk_team_fg_pct', 'uk_team_3pt_pct',
+    'opp_pts_roll3', 'opp_fg_pct_roll3', 'uk_def_roll3',
+    'uk_is_home',
+]
+
+# Kentucky constants (update each season from team_metrics table)
 UK_BPI = 16.6
 
-# Current roster
+
+# Current roster (update each season)
 CURRENT_ROSTER = [
     {'name': 'Otega Oweh',        'starter': 1, 'walk_on': False},
     {'name': 'Denzel Aberdeen',   'starter': 1, 'walk_on': False},
@@ -83,21 +116,30 @@ CURRENT_ROSTER = [
 class PredictionEngine:
     """
     Full prediction pipeline for Kentucky basketball games.
-    Loads trained models and data, then generates game predictions.
+    Loads trained models and data, generates game predictions.
+
+    V2 improvements:
+    - Temporal decay features (recent games weight more)
+    - Hot/cold streak indicator
+    - Injury-adjusted opponent score via UK BPI defense
+    - Logistic regression win probability
     """
 
     def __init__(self):
-        self.model_v3      = None
-        self.minutes_model = None
-        self.opp_model_v4  = None
-        self.le_player     = None
-        self.le_position   = None
-        self.le_opponent   = None
-        self.df_model      = None
-        self.opp_model_df  = None
-        self.reb_model = None
-        self.ast_model = None
-        self.thresholds = {}
+        self.model_v3         = None
+        self.minutes_model    = None
+        self.opp_model_v4     = None
+        self.reb_model        = None
+        self.ast_model        = None
+        self.win_prob_model   = None
+        self.win_prob_scaler  = None
+        self.le_player        = None
+        self.le_position      = None
+        self.le_opponent      = None
+        self.df_model         = None
+        self.opp_model_df     = None
+        self.thresholds       = {}
+        self.uk_bpi_defense   = 7.5   # fallback; loaded from DB
         self._load_models()
         self._load_data()
 
@@ -109,37 +151,50 @@ class PredictionEngine:
             self.model_v3      = joblib.load(os.path.join(MODELS_DIR, 'model_v3.joblib'))
             self.minutes_model = joblib.load(os.path.join(MODELS_DIR, 'minutes_model.joblib'))
             self.opp_model_v4  = joblib.load(os.path.join(MODELS_DIR, 'opp_model_v4.joblib'))
+            self.reb_model     = joblib.load(os.path.join(MODELS_DIR, 'reb_model.joblib'))
+            self.ast_model     = joblib.load(os.path.join(MODELS_DIR, 'ast_model.joblib'))
             self.le_player     = joblib.load(os.path.join(MODELS_DIR, 'le_player.joblib'))
             self.le_position   = joblib.load(os.path.join(MODELS_DIR, 'le_position.joblib'))
             self.le_opponent   = joblib.load(os.path.join(MODELS_DIR, 'le_opponent.joblib'))
-            self.reb_model = joblib.load(os.path.join(MODELS_DIR, 'reb_model.joblib'))
-            self.ast_model = joblib.load(os.path.join(MODELS_DIR, 'ast_model.joblib'))
-            print("✅ Models loaded from disk")
         except FileNotFoundError as e:
             raise RuntimeError(
-                f"Models not found. Run the notebook to train and save models first.\n{e}"
+                f"Models not found. Run model_v2.ipynb to train and save models first.\n{e}"
             )
 
+        # Win prob model — optional (falls back to hybrid if not found)
+        try:
+            self.win_prob_model  = joblib.load(os.path.join(MODELS_DIR, 'win_prob_model.joblib'))
+            self.win_prob_scaler = joblib.load(os.path.join(MODELS_DIR, 'win_prob_scaler.joblib'))
+            self._win_prob_v2 = True
+        except FileNotFoundError:
+            self._win_prob_v2 = False
+
+        print("✅ Models loaded from disk")
+
     # ── Data loading ───────────────────────────────────────────────────────────
+
     def _load_data(self):
-        """Load pre-computed features directly from database."""
+        """Load pre-computed features from database."""
         conn = sqlite3.connect(DB_PATH)
 
-        # Load fully prepared player features — matches notebook exactly
-        self.df_model = pd.read_sql(
-            "SELECT * FROM player_model_features", conn
-        )
+        self.df_model = pd.read_sql("SELECT * FROM player_model_features", conn)
         self.df_model['game_date'] = pd.to_datetime(self.df_model['game_date'])
         self.df_model = self.df_model.sort_values(['player_name', 'game_date'])
 
-        # Load opponent game totals with rolling features
-        self.opp_model_df = pd.read_sql(
-            "SELECT * FROM opponent_game_totals", conn
-        )
+        self.opp_model_df = pd.read_sql("SELECT * FROM opponent_game_totals", conn)
         self.opp_model_df['game_date'] = pd.to_datetime(self.opp_model_df['game_date'])
 
+        # Load UK BPI defense from team_metrics (most recent)
+        try:
+            metrics = pd.read_sql(
+                "SELECT bpi_defense FROM team_metrics ORDER BY date DESC LIMIT 1", conn
+            )
+            if len(metrics) > 0:
+                self.uk_bpi_defense = float(metrics['bpi_defense'].iloc[0])
+        except Exception:
+            pass
+
         # Player thresholds
-        import json
         thresholds_raw = pd.read_sql("SELECT * FROM player_thresholds", conn)
         self.thresholds = {
             row['player_name']: json.loads(row['thresholds_json'])
@@ -147,10 +202,63 @@ class PredictionEngine:
         }
 
         conn.close()
-
         print(f"✅ Data loaded: {len(self.df_model)} player records, "
               f"{len(self.opp_model_df)} opponent games")
+        print(f"   UK BPI Defense: {self.uk_bpi_defense} | "
+              f"Win prob model: {'V2 logistic' if self._win_prob_v2 else 'hybrid fallback'}")
 
+    # ── Decay feature helpers ──────────────────────────────────────────────────
+
+    def _decay3(self, series_vals):
+        """3-game decay weighted average. Weights: [0.2, 0.3, 0.5]"""
+        if len(series_vals) < 3:
+            return np.mean(series_vals) if len(series_vals) > 0 else 0.0
+        v = np.array(series_vals[-3:], dtype=float)
+        return float(np.dot(v, [0.2, 0.3, 0.5]))
+
+    def _decay5(self, series_vals):
+        """5-game decay weighted average. Weights: [0.05, 0.10, 0.15, 0.30, 0.40]"""
+        if len(series_vals) < 5:
+            return np.mean(series_vals) if len(series_vals) > 0 else 0.0
+        v = np.array(series_vals[-5:], dtype=float)
+        return float(np.dot(v, [0.05, 0.10, 0.15, 0.30, 0.40]))
+
+    def _get_decay_features(self, player_history):
+        """Compute all decay features from a player's game history."""
+        pts  = player_history['points'].tolist()
+        mins = player_history['minutes'].tolist()
+        reb  = player_history['rebounds'].tolist()
+        ast  = player_history['assists'].tolist()
+
+        pts_d3  = self._decay3(pts)
+        pts_d5  = self._decay5(pts)
+        min_d3  = self._decay3(mins)
+        min_d5  = self._decay5(mins)
+        reb_d3  = self._decay3(reb)
+        ast_d3  = self._decay3(ast)
+
+        # Hot/cold streak: +1 hot, -1 cold, 0 neutral
+        pts_avg = np.mean(pts) if pts else 0
+        hot_streak = 0
+        if pts_avg > 0 and len(pts) >= 3:
+            roll3_avg = np.mean(pts[-3:])
+            if roll3_avg > pts_avg * 1.15:
+                hot_streak = 1
+            elif roll3_avg < pts_avg * 0.85:
+                hot_streak = -1
+
+        usage_trend = pts_d3 - pts_d5
+
+        return {
+            'points_decay3':  pts_d3,
+            'points_decay5':  pts_d5,
+            'minutes_decay3': min_d3,
+            'minutes_decay5': min_d5,
+            'rebounds_decay3': reb_d3,
+            'assists_decay3':  ast_d3,
+            'hot_streak':     hot_streak,
+            'usage_trend':    usage_trend,
+        }
 
     # ── Core prediction methods ────────────────────────────────────────────────
 
@@ -158,72 +266,86 @@ class PredictionEngine:
                        days_rest=3, is_back_to_back=0, starter=None,
                        season_segment=3):
         """
-        Predict points for a single player using chained minutes → points pipeline.
-        Returns dict with name, predicted_minutes, predicted_points.
+        Predict points/rebounds/assists/minutes for a single player.
+        Uses chained minutes → stats pipeline with V2 decay features.
         """
         player_data = self.df_model[
             self.df_model['player_name'] == player_name
-        ].sort_values('game_date').tail(1)
+        ].sort_values('game_date')
 
         if len(player_data) == 0:
             return None
 
-        row = player_data.iloc[0].copy()
+        row = player_data.iloc[-1].copy()
 
-        # Get opponent context
+        # ── Compute V2 decay features from full history ────────────────────────
+        decay_feats = self._get_decay_features(player_data)
+        for k, v in decay_feats.items():
+            row[k] = v
+
+        # Fill V2 features if missing from DB (old data pre-V2 training)
+        for col in ['points_decay3', 'points_decay5', 'minutes_decay3',
+                    'minutes_decay5', 'rebounds_decay3', 'assists_decay3',
+                    'hot_streak', 'usage_trend']:
+            if col not in row or pd.isna(row.get(col)):
+                row[col] = decay_feats.get(col, 0.0)
+
+        # ── Opponent defensive context ─────────────────────────────────────────
         opp_def = self.df_model[self.df_model['opponent'] == opponent][
             ['opp_avg_points_allowed', 'opp_avg_rebounds', 'opp_avg_turnovers_forced']
         ].mean()
 
-        opp_allowed   = opp_def['opp_avg_points_allowed']   if not opp_def.isna().all() else 75.6
-        opp_rebounds  = opp_def['opp_avg_rebounds']         if not opp_def.isna().all() else 31.3
-        opp_turnovers = opp_def['opp_avg_turnovers_forced'] if not opp_def.isna().all() else 12.0
+        row['opp_avg_points_allowed']   = opp_def['opp_avg_points_allowed']   if not opp_def.isna().all() else 75.6
+        row['opp_avg_rebounds']         = opp_def['opp_avg_rebounds']         if not opp_def.isna().all() else 31.3
+        row['opp_avg_turnovers_forced'] = opp_def['opp_avg_turnovers_forced'] if not opp_def.isna().all() else 12.0
 
         try:
-            opp_encoded = self.le_opponent.transform([opponent])[0]
+            row['opponent_encoded'] = self.le_opponent.transform([opponent])[0]
         except ValueError:
-            opp_encoded = 0  # unknown opponent fallback
+            row['opponent_encoded'] = 0
 
-        # Override context features
-        row['is_home']                  = int(is_home)
-        row['days_rest']                = days_rest
-        row['is_back_to_back']          = int(is_back_to_back)
-        row['season_segment']           = season_segment
-        row['opponent_encoded']         = opp_encoded
-        row['opp_avg_points_allowed']   = opp_allowed
-        row['opp_avg_rebounds']         = opp_rebounds
-        row['opp_avg_turnovers_forced'] = opp_turnovers
-
+        # ── Override context features ──────────────────────────────────────────
+        row['is_home']         = int(is_home)
+        row['days_rest']       = days_rest
+        row['is_back_to_back'] = int(is_back_to_back)
+        row['season_segment']  = season_segment
         if starter is not None:
             row['starter'] = int(starter)
 
-        # Step 1 — predict minutes
+        # ── Step 1: Predict minutes ────────────────────────────────────────────
         X_min = pd.DataFrame([row[MINUTES_FEATURES]])
-        pred_minutes = max(0, float(self.minutes_model.predict(X_min)[0]))
+        pred_minutes = max(0.0, float(self.minutes_model.predict(X_min)[0]))
 
-        # Step 2 — update rolling minutes with predicted value
+        # ── Step 2: Update rolling minutes with predicted value ────────────────
         row['minutes_roll3'] = (row['minutes_roll3'] * 2 + pred_minutes) / 3
         row['minutes_roll5'] = (row['minutes_roll5'] * 4 + pred_minutes) / 5
+        row['predicted_minutes'] = pred_minutes
 
-        # Step 3 — predict points
+        # ── Step 3: Predict points/rebounds/assists ────────────────────────────
         X_pts = pd.DataFrame([row[FEATURE_COLS]])
-        pred_points = max(0, float(self.model_v3.predict(X_pts)[0]))
-        pred_rebounds = max(0, float(self.reb_model.predict(X_pts)[0]))
-        pred_assists  = max(0, float(self.ast_model.predict(X_pts)[0]))
+        pred_points   = max(0.0, float(self.model_v3.predict(X_pts)[0]))
+        pred_rebounds = max(0.0, float(self.reb_model.predict(X_pts)[0]))
+        pred_assists  = max(0.0, float(self.ast_model.predict(X_pts)[0]))
 
         return {
-            'name':    player_name,
-            'minutes': round(pred_minutes, 1),
-            'points':  round(pred_points, 1),
+            'name':     player_name,
+            'minutes':  round(pred_minutes, 1),
+            'points':   round(pred_points, 1),
             'rebounds': round(pred_rebounds, 1),
             'assists':  round(pred_assists, 1),
-            'starter': int(row['starter']),
+            'starter':  int(row['starter']),
         }
 
-    def predict_opponent_score(self, opponent, is_home, net_rank):
-        """Predict how many points the opponent will score against Kentucky."""
-    
-        # Look up last game against this opponent in opp_game_totals
+    def predict_opponent_score(self, opponent, is_home, net_rank,
+                                uk_bpi_defense=None):
+        """
+        Predict opponent score. V2 adds uk_bpi_defense so the model
+        reacts to Kentucky's current defensive strength (and implicitly
+        to injuries — weaker defense = higher BPI defense number = more pts allowed).
+        """
+        if uk_bpi_defense is None:
+            uk_bpi_defense = self.uk_bpi_defense
+
         opp_games = self.opp_model_df[
             self.opp_model_df['team'] == opponent
         ].sort_values('game_date')
@@ -236,16 +358,15 @@ class PredictionEngine:
 
         if len(opp_games) > 0:
             row = opp_games.iloc[-1]
-            opp_pts_roll3 = row['opp_pts_roll3']   if pd.notna(row['opp_pts_roll3'])   else global_pts_mean
-            opp_pts_roll5 = row['opp_pts_roll5']   if pd.notna(row['opp_pts_roll5'])   else global_pts_mean
+            opp_pts_roll3 = row['opp_pts_roll3']      if pd.notna(row['opp_pts_roll3'])      else global_pts_mean
+            opp_pts_roll5 = row['opp_pts_roll5']      if pd.notna(row['opp_pts_roll5'])      else global_pts_mean
             opp_fg_roll3  = row['opp_fg_pct_roll3']   if pd.notna(row['opp_fg_pct_roll3'])   else global_fg_mean
-            opp_3pt_roll3 = row['opp_three_pct_roll3'] if pd.notna(row['opp_three_pct_roll3']) else global_three_mean
-            opp_reb_roll3 = row['opp_reb_roll3']   if pd.notna(row['opp_reb_roll3'])   else global_reb_mean
-            uk_def_roll3  = row['uk_def_roll3']    if pd.notna(row['uk_def_roll3'])    else global_def_mean
-            uk_def_roll5  = row['uk_def_roll5']    if pd.notna(row['uk_def_roll5'])    else global_def_mean
-            uk_def_season = row['uk_def_season']   if pd.notna(row['uk_def_season'])   else global_def_mean
+            opp_3pt_roll3 = row['opp_three_pct_roll3']if pd.notna(row['opp_three_pct_roll3'])else global_three_mean
+            opp_reb_roll3 = row['opp_reb_roll3']      if pd.notna(row['opp_reb_roll3'])      else global_reb_mean
+            uk_def_roll3  = row['uk_def_roll3']       if pd.notna(row['uk_def_roll3'])       else global_def_mean
+            uk_def_roll5  = row['uk_def_roll5']       if pd.notna(row['uk_def_roll5'])       else global_def_mean
+            uk_def_season = row['uk_def_season']      if pd.notna(row['uk_def_season'])      else global_def_mean
         else:
-            # New opponent — use global averages
             opp_pts_roll3 = global_pts_mean
             opp_pts_roll5 = global_pts_mean
             opp_fg_roll3  = global_fg_mean
@@ -256,7 +377,6 @@ class PredictionEngine:
             uk_def_season = global_def_mean
 
         opp_input = pd.DataFrame([{
-            'net_rank':            net_rank,
             'uk_is_home':          int(is_home),
             'opp_pts_roll3':       opp_pts_roll3,
             'opp_pts_roll5':       opp_pts_roll5,
@@ -266,9 +386,65 @@ class PredictionEngine:
             'uk_def_roll3':        uk_def_roll3,
             'uk_def_roll5':        uk_def_roll5,
             'uk_def_season':       uk_def_season,
+            'uk_bpi_defense':      uk_bpi_defense,
         }])
 
-        return round(float(self.opp_model_v4.predict(opp_input)[0]), 1)
+        # Handle old model that doesn't have uk_bpi_defense feature
+        try:
+            return round(float(self.opp_model_v4.predict(opp_input)[0]), 1)
+        except Exception:
+            # Fallback: drop the new feature for old model
+            opp_input_old = opp_input.drop(columns=['uk_bpi_defense'])
+            return round(float(self.opp_model_v4.predict(opp_input_old)[0]), 1)
+
+    def _win_prob_logistic(self, projections, opp_score, is_home,
+                            opp_pts_roll3, opp_fg_pct_roll3, uk_def_roll3):
+        """
+        V2 win probability using trained logistic regression.
+        Falls back to hybrid model if win_prob_model not available.
+        """
+        uk_pts   = sum(p['points']   for p in projections)
+        uk_reb   = sum(p['rebounds'] for p in projections)
+        uk_ast   = sum(p['assists']  for p in projections)
+        uk_to    = 12.0  # season average fallback
+        uk_fg    = 0.46  # season average fallback
+        uk_3pt   = 0.34  # season average fallback
+
+        pts_diff = uk_pts - opp_score
+        reb_diff = uk_reb - 31.0   # opponent average rebounds
+
+        features = pd.DataFrame([{
+            'pts_diff':        pts_diff,
+            'reb_diff':        reb_diff,
+            'uk_team_ast':     uk_ast,
+            'uk_team_to':      uk_to,
+            'uk_team_fg_pct':  uk_fg,
+            'uk_team_3pt_pct': uk_3pt,
+            'opp_pts_roll3':   opp_pts_roll3,
+            'opp_fg_pct_roll3':opp_fg_pct_roll3,
+            'uk_def_roll3':    uk_def_roll3,
+            'uk_is_home':      int(is_home),
+        }])
+
+        X_scaled = self.win_prob_scaler.transform(features)
+        prob = float(self.win_prob_model.predict_proba(X_scaled)[0][1])
+        return round(prob, 3)
+
+    def _win_prob_hybrid(self, uk_score, opp_score, opp_bpi, is_home, injuries):
+        """
+        Fallback hybrid win probability (V1 method).
+        Used if logistic regression model not available.
+        """
+        point_diff   = uk_score - opp_score
+        diff_win_prob = float(expit(point_diff * 0.12))
+
+        bpi_diff     = UK_BPI - opp_bpi
+        bpi_win_prob = float(expit(bpi_diff * 0.15))
+        if is_home:
+            bpi_win_prob = min(0.97, bpi_win_prob + 0.08)
+        bpi_win_prob = max(0.05, bpi_win_prob - len(injuries) * 0.035)
+
+        return round(0.60 * diff_win_prob + 0.40 * bpi_win_prob, 3)
 
     def predict_game(self, opponent, is_home, net_rank, opp_bpi=10.0,
                      injuries=None, days_rest=3, is_back_to_back=0,
@@ -280,51 +456,76 @@ class PredictionEngine:
         injuries = injuries or []
         roster   = roster or CURRENT_ROSTER
 
-        # Filter out injured players
-        active_roster = [p for p in roster if p['name'] not in injuries and not p.get('walk_on', False)]
+        # Filter out injured and walk-on players
+        active_roster = [
+            p for p in roster
+            if p['name'] not in injuries and not p.get('walk_on', False)
+        ]
 
-        # Player projections
+        # ── Player projections ─────────────────────────────────────────────────
         projections = []
         for p in active_roster:
             result = self.predict_player(
-                player_name    = p['name'],
-                opponent       = opponent,
-                is_home        = is_home,
-                net_rank       = net_rank,
-                days_rest      = days_rest,
-                is_back_to_back= is_back_to_back,
-                starter        = p['starter'],
+                player_name     = p['name'],
+                opponent        = opponent,
+                is_home         = is_home,
+                net_rank        = net_rank,
+                days_rest       = days_rest,
+                is_back_to_back = is_back_to_back,
+                starter         = p['starter'],
             )
             if result:
-                if p.get('walk_on'):
-                    result['points']  = 0.5
-                    result['minutes'] = 1.0
                 projections.append(result)
 
-        uk_score  = sum(p['points'] for p in projections)
-        opp_score = self.predict_opponent_score(opponent, is_home, net_rank)
+        uk_score = sum(p['points'] for p in projections)
 
-        # Win probability
-        point_diff    = uk_score - opp_score
-        diff_win_prob = float(expit(point_diff * 0.12))
+        # ── Opponent score — injury-adjusted via BPI defense ───────────────────
+        # Injury penalty: each missing non-walk-on increases effective BPI defense
+        # (higher BPI defense = weaker defense = more pts allowed)
+        injury_bpi_penalty = len(injuries) * 0.4
+        adjusted_bpi_defense = self.uk_bpi_defense + injury_bpi_penalty
+        opp_score = self.predict_opponent_score(
+            opponent, is_home, net_rank,
+            uk_bpi_defense=adjusted_bpi_defense
+        )
 
-        bpi_diff    = UK_BPI - opp_bpi
-        bpi_win_prob = float(expit(bpi_diff * 0.15))
-        if is_home:
-            bpi_win_prob = min(0.97, bpi_win_prob + 0.08)
-        bpi_win_prob = max(0.05, bpi_win_prob - len(injuries) * 0.035)
+        # ── Win probability ────────────────────────────────────────────────────
+        # Get opponent rolling stats for logistic model
+        opp_games = self.opp_model_df[
+            self.opp_model_df['team'] == opponent
+        ].sort_values('game_date')
 
-        win_prob = round(0.60 * diff_win_prob + 0.40 * bpi_win_prob, 3)
+        if len(opp_games) > 0:
+            last = opp_games.iloc[-1]
+            opp_pts_roll3    = last.get('opp_pts_roll3',    self.opp_model_df['opp_team_points'].mean())
+            opp_fg_pct_roll3 = last.get('opp_fg_pct_roll3', self.opp_model_df['opp_fg_pct'].mean())
+            uk_def_roll3     = last.get('uk_def_roll3',     self.opp_model_df['uk_def_roll3'].mean())
+        else:
+            opp_pts_roll3    = self.opp_model_df['opp_team_points'].mean()
+            opp_fg_pct_roll3 = self.opp_model_df['opp_fg_pct'].mean()
+            uk_def_roll3     = self.opp_model_df['uk_def_roll3'].mean()
+
+        if self._win_prob_v2:
+            win_prob = self._win_prob_logistic(
+                projections, opp_score, is_home,
+                opp_pts_roll3, opp_fg_pct_roll3, uk_def_roll3
+            )
+        else:
+            win_prob = self._win_prob_hybrid(
+                uk_score, opp_score, opp_bpi, is_home, injuries
+            )
+
+        point_diff = round(uk_score - opp_score, 1)
 
         return {
-            'opponent':       opponent,
-            'is_home':        is_home,
-            'uk_score':       round(uk_score, 1),
-            'opp_score':      round(opp_score, 1),
-            'point_diff':     round(point_diff, 1),
-            'win_probability':round(win_prob * 100, 1),
-            'injuries':       injuries,
-            'projections':    projections,
+            'opponent':        opponent,
+            'is_home':         is_home,
+            'uk_score':        round(uk_score, 1),
+            'opp_score':       round(opp_score, 1),
+            'point_diff':      point_diff,
+            'win_probability': round(win_prob * 100, 1),
+            'injuries':        injuries,
+            'projections':     projections,
         }
 
     def get_threshold_status(self, player_name, pred_points, pred_rebounds, pred_assists):
@@ -343,7 +544,7 @@ class PredictionEngine:
             if thresh is None or n < 4 or win_rate < 0.75:
                 continue
 
-            thresh = float(thresh)  # stored as string in JSON
+            thresh   = float(thresh)
             pred_val = {'points': pred_points, 'rebounds': pred_rebounds,
                         'assists': pred_assists}.get(stat, 0)
             requirements.append((stat, thresh, win_rate, n))
@@ -356,6 +557,7 @@ class PredictionEngine:
             f"{s.capitalize()} {int(t)}+ ({int(w*100)}% win, n={n})"
             for s, t, w, n in requirements
         )
+
         if all(met):   status = '✅'
         elif any(met): status = '⚠️ '
         else:          status = '❌'
@@ -406,39 +608,42 @@ class PredictionEngine:
                 f"  {p['assists']:>5.1f}  {p['minutes']:>5.1f}  {status:<6}  {must_do}"
             )
 
-        # Team totals
         tot_pts = sum(p['points']   for p in result['projections'])
         tot_reb = sum(p['rebounds'] for p in result['projections'])
         tot_ast = sum(p['assists']  for p in result['projections'])
         tot_min = sum(p['minutes']  for p in result['projections'])
-        lines.append(f"\n  {'TEAM TOTAL':<25} {tot_pts:>5.1f}  {tot_reb:>5.1f}  {tot_ast:>5.1f}  {tot_min:>5.1f}")
+        lines.append(
+            f"\n  {'TEAM TOTAL':<25} {tot_pts:>5.1f}  {tot_reb:>5.1f}"
+            f"  {tot_ast:>5.1f}  {tot_min:>5.1f}"
+        )
         lines.append(f"{'='*75}")
 
         return '\n'.join(lines)
 
 
-# ── Save models helper (run once from notebook) ────────────────────────────────
+# ── Save models helper (called from notebook) ──────────────────────────────────
 
 def save_models(model_v3, minutes_model, opp_model_v4,
-                le_player, le_position, le_opponent):
-    """
-    Call this from the notebook to save all trained models to disk.
-    Only needs to be run once after training.
-    """
+                le_player, le_position, le_opponent,
+                reb_model=None, ast_model=None,
+                win_prob_model=None, win_prob_scaler=None):
+    """Save all trained models to disk."""
     os.makedirs(MODELS_DIR, exist_ok=True)
-    joblib.dump(model_v3,       os.path.join(MODELS_DIR, 'model_v3.joblib'))
-    joblib.dump(minutes_model,  os.path.join(MODELS_DIR, 'minutes_model.joblib'))
-    joblib.dump(opp_model_v4,   os.path.join(MODELS_DIR, 'opp_model_v4.joblib'))
-    joblib.dump(le_player,      os.path.join(MODELS_DIR, 'le_player.joblib'))
-    joblib.dump(le_position,    os.path.join(MODELS_DIR, 'le_position.joblib'))
-    joblib.dump(le_opponent,    os.path.join(MODELS_DIR, 'le_opponent.joblib'))
+    joblib.dump(model_v3,      os.path.join(MODELS_DIR, 'model_v3.joblib'))
+    joblib.dump(minutes_model, os.path.join(MODELS_DIR, 'minutes_model.joblib'))
+    #joblib.dump(opp_model_v4,  os.path.join(MODELS_DIR, 'opp_model_v4.joblib'))
+    joblib.dump(le_player,     os.path.join(MODELS_DIR, 'le_player.joblib'))
+    joblib.dump(le_position,   os.path.join(MODELS_DIR, 'le_position.joblib'))
+    joblib.dump(le_opponent,   os.path.join(MODELS_DIR, 'le_opponent.joblib'))
+    if reb_model:
+        joblib.dump(reb_model, os.path.join(MODELS_DIR, 'reb_model.joblib'))
+    if ast_model:
+        joblib.dump(ast_model, os.path.join(MODELS_DIR, 'ast_model.joblib'))
+    if win_prob_model:
+        joblib.dump(win_prob_model,  os.path.join(MODELS_DIR, 'win_prob_model.joblib'))
+    if win_prob_scaler:
+        joblib.dump(win_prob_scaler, os.path.join(MODELS_DIR, 'win_prob_scaler.joblib'))
     print(f"✅ Models saved to {MODELS_DIR}")
-    print(f"   model_v3.joblib")
-    print(f"   minutes_model.joblib")
-    print(f"   opp_model_v4.joblib")
-    print(f"   le_player.joblib")
-    print(f"   le_position.joblib")
-    print(f"   le_opponent.joblib")
 
 
 if __name__ == '__main__':
@@ -446,7 +651,7 @@ if __name__ == '__main__':
     result = engine.predict_game(
         opponent  = 'LSU Tigers',
         is_home   = 0,
-        net_rank  = 120,
+        net_rank  = 78,
         opp_bpi   = 10.0,
         injuries  = ['Jayden Quaintance', 'Jaland Lowe', 'Kam Williams']
     )
