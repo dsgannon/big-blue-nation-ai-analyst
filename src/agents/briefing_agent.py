@@ -17,11 +17,13 @@ from ingestion.espn_client import(
     get_sec_standings,
 )
 
+from models.prediction_engine import PredictionEngine
+
 load_dotenv()
 
 KENTUCKY_TEAM_ID = "96"
 
-def build_context(stories, metrics, rankings, next_game, standings):
+def build_context(stories, metrics, rankings, next_game, standings, prediction_text=""):
     """Build context string to feed to Mistral"""
 
     # Rankings
@@ -79,6 +81,10 @@ NEXT GAME:
 TOP STORIES:
 {news_str}
 """
+    
+    if prediction_text:
+        context += f"\nGAME PREDICTION:\n{prediction_text}\n"
+
     return context
 
 def generate_briefing(context, tone="fan"):
@@ -101,6 +107,10 @@ Structure it as:
 6. Closing hype sentence for BBN
 
 Keep the total briefing to around 300-400 words. Be specific with names, numbers and facts.
+
+IMPORTANT: Use ONLY the exact numbers provided in the data below. 
+Do not invent stats, scores, injury reports, or records. 
+If the game prediction section shows a win probability, use that exact number.
 
 {context}
 
@@ -157,10 +167,30 @@ def run_briefing(tone="fan"):
     metrics = get_team_metrics()
     rankings = get_kentucky_rankings()
     next_game = get_next_game()
+    # Game prediction
+    prediction_text = ""
+    try:
+        next_game_data = get_next_game()
+        if next_game_data:
+            engine = PredictionEngine()
+            opponent = next_game_data.get('away_team') if next_game_data.get('home_team') == 'Kentucky Wildcats' else next_game_data.get('home_team')
+            is_home  = 1 if next_game_data.get('home_team') == 'Kentucky Wildcats' else 0
+            result   = engine.predict_game(
+                opponent  = opponent,
+                is_home   = is_home,
+                net_rank  = 120,
+                opp_bpi   = 10.0,
+                injuries  = ['Jayden Quaintance', 'Jaland Lowe', 'Kam Williams']
+            )
+            prediction_text = engine.format_prediction(result)
+            print("✅ Game prediction generated")
+    except Exception as e:
+        print(f"⚠️  Prediction failed: {e}")
+        prediction_text = ""
     standings = get_sec_standings()
 
     print("🤖 Generating briefing with Mistral...")
-    context = build_context(stories, metrics, rankings, next_game, standings)
+    context = build_context(stories, metrics, rankings, next_game, standings, prediction_text)
     briefing = generate_briefing(context, tone=tone)
 
     print("\n" + "=" * 55)
