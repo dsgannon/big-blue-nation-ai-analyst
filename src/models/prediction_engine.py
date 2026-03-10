@@ -92,6 +92,9 @@ class PredictionEngine:
         self.le_opponent   = None
         self.df_model      = None
         self.opp_model_df  = None
+        self.reb_model = None
+        self.ast_model = None
+        self.thresholds = {}
         self._load_models()
         self._load_data()
 
@@ -106,6 +109,8 @@ class PredictionEngine:
             self.le_player     = joblib.load(os.path.join(MODELS_DIR, 'le_player.joblib'))
             self.le_position   = joblib.load(os.path.join(MODELS_DIR, 'le_position.joblib'))
             self.le_opponent   = joblib.load(os.path.join(MODELS_DIR, 'le_opponent.joblib'))
+            self.reb_model = joblib.load(os.path.join(MODELS_DIR, 'reb_model.joblib'))
+            self.ast_model = joblib.load(os.path.join(MODELS_DIR, 'ast_model.joblib'))
             print("✅ Models loaded from disk")
         except FileNotFoundError as e:
             raise RuntimeError(
@@ -129,6 +134,14 @@ class PredictionEngine:
             "SELECT * FROM opponent_game_totals", conn
         )
         self.opp_model_df['game_date'] = pd.to_datetime(self.opp_model_df['game_date'])
+
+        # Player thresholds
+        import json
+        thresholds_raw = pd.read_sql("SELECT * FROM player_thresholds", conn)
+        self.thresholds = {
+            row['player_name']: json.loads(row['thresholds_json'])
+            for _, row in thresholds_raw.iterrows()
+        }
 
         conn.close()
 
@@ -192,11 +205,15 @@ class PredictionEngine:
         # Step 3 — predict points
         X_pts = pd.DataFrame([row[FEATURE_COLS]])
         pred_points = max(0, float(self.model_v3.predict(X_pts)[0]))
+        pred_rebounds = max(0, float(self.reb_model.predict(X_pts)[0]))
+        pred_assists  = max(0, float(self.ast_model.predict(X_pts)[0]))
 
         return {
             'name':    player_name,
             'minutes': round(pred_minutes, 1),
             'points':  round(pred_points, 1),
+            'rebounds': round(pred_rebounds, 1),
+            'assists':  round(pred_assists, 1),
             'starter': int(row['starter']),
         }
 
@@ -261,7 +278,7 @@ class PredictionEngine:
         roster   = roster or CURRENT_ROSTER
 
         # Filter out injured players
-        active_roster = [p for p in roster if p['name'] not in injuries]
+        active_roster = [p for p in roster if p['name'] not in injuries and not p.get('walk_on', False)]
 
         # Player projections
         projections = []
@@ -296,6 +313,13 @@ class PredictionEngine:
 
         win_prob = round(0.60 * diff_win_prob + 0.40 * bpi_win_prob, 3)
 
+
+        # Display SHAP plot
+        import subprocess
+        shap_plot = os.path.join(BASE_DIR, 'notebooks', 'shap_summary_v3.png')
+        if os.path.exists(shap_plot):
+            subprocess.Popen(['open', shap_plot])  # macOS — opens in Preview
+
         return {
             'opponent':       opponent,
             'is_home':        is_home,
@@ -307,15 +331,50 @@ class PredictionEngine:
             'projections':    projections,
         }
 
+    def get_threshold_status(self, player_name, pred_points, pred_rebounds, pred_assists):
+        """Return threshold status icon and must-do string for a player."""
+        if player_name not in self.thresholds:
+            return '✅', 'Contribute positively'
+
+        t = self.thresholds[player_name]
+        requirements = []
+        met = []
+
+        for stat, info in t.items():
+            thresh   = info.get('threshold')
+            win_rate = info.get('win_pct_above', 0)
+            n        = info.get('n_games_above', 0)
+            if thresh is None or n < 4 or win_rate < 0.75:
+                continue
+
+            thresh = float(thresh)  # stored as string in JSON
+            pred_val = {'points': pred_points, 'rebounds': pred_rebounds,
+                        'assists': pred_assists}.get(stat, 0)
+            requirements.append((stat, thresh, win_rate, n))
+            met.append(pred_val >= thresh)
+
+        if not requirements:
+            return '✅', 'Contribute positively'
+
+        must_do = ' & '.join(
+            f"{s.capitalize()} {int(t)}+ ({int(w*100)}% win, n={n})"
+            for s, t, w, n in requirements
+        )
+        if all(met):   status = '✅'
+        elif any(met): status = '⚠️ '
+        else:          status = '❌'
+
+        return status, must_do
+
     def format_prediction(self, result):
-        """Pretty print a game prediction."""
+        """Pretty print a game prediction with thresholds and team totals."""
         venue = 'Home' if result['is_home'] else 'Away'
         inj   = ', '.join(result['injuries']) if result['injuries'] else 'None'
 
         lines = [
-            f"{'='*65}",
+            f"{'='*75}",
             f"🏀 KENTUCKY vs {result['opponent'].upper()} — PREDICTION",
-            f"{'='*65}",
+            f"{'='*75}",
             f"  {venue} | Injuries: {inj}",
             f"",
             f"  WIN PROBABILITY: Kentucky {result['win_probability']}% | "
@@ -324,22 +383,41 @@ class PredictionEngine:
             f"{result['opponent']} {result['opp_score']}",
             f"  Point differential: {result['point_diff']:+.1f}",
             f"",
-            f"  {'Player':<25} {'MIN':>5}  {'PTS':>5}  {'Role'}",
-            f"  {'-'*25} {'-'*5}  {'-'*5}  {'-'*5}",
+            f"  {'Player':<25} {'PTS':>5}  {'REB':>5}  {'AST':>5}  {'MIN':>5}  {'Status':<6}  Must Do",
+            f"  {'-'*25} {'-'*5}  {'-'*5}  {'-'*5}  {'-'*5}  {'-'*6}  {'-'*30}",
         ]
 
         starters = [p for p in result['projections'] if p['starter']]
         bench    = [p for p in result['projections'] if not p['starter']]
 
-        lines.append(f"  STARTERS:")
+        lines.append(f"\n  STARTERS:")
         for p in sorted(starters, key=lambda x: x['points'], reverse=True):
-            lines.append(f"  {p['name']:<25} {p['minutes']:>5.1f}  {p['points']:>5.1f}  [S]")
+            status, must_do = self.get_threshold_status(
+                p['name'], p['points'], p['rebounds'], p['assists']
+            )
+            lines.append(
+                f"  {p['name']:<25} {p['points']:>5.1f}  {p['rebounds']:>5.1f}"
+                f"  {p['assists']:>5.1f}  {p['minutes']:>5.1f}  {status:<6}  {must_do}"
+            )
 
-        lines.append(f"  BENCH:")
+        lines.append(f"\n  BENCH:")
         for p in sorted(bench, key=lambda x: x['points'], reverse=True):
-            lines.append(f"  {p['name']:<25} {p['minutes']:>5.1f}  {p['points']:>5.1f}  [B]")
+            status, must_do = self.get_threshold_status(
+                p['name'], p['points'], p['rebounds'], p['assists']
+            )
+            lines.append(
+                f"  {p['name']:<25} {p['points']:>5.1f}  {p['rebounds']:>5.1f}"
+                f"  {p['assists']:>5.1f}  {p['minutes']:>5.1f}  {status:<6}  {must_do}"
+            )
 
-        lines.append(f"{'='*65}")
+        # Team totals
+        tot_pts = sum(p['points']   for p in result['projections'])
+        tot_reb = sum(p['rebounds'] for p in result['projections'])
+        tot_ast = sum(p['assists']  for p in result['projections'])
+        tot_min = sum(p['minutes']  for p in result['projections'])
+        lines.append(f"\n  {'TEAM TOTAL':<25} {tot_pts:>5.1f}  {tot_reb:>5.1f}  {tot_ast:>5.1f}  {tot_min:>5.1f}")
+        lines.append(f"{'='*75}")
+
         return '\n'.join(lines)
 
 
@@ -374,6 +452,6 @@ if __name__ == '__main__':
         is_home   = 0,
         net_rank  = 120,
         opp_bpi   = 10.0,
-        injuries  = ['Jayden Quaintance', 'Jaland Lowe', 'Kam Williams'],
+        injuries  = ['Jayden Quaintance', 'Jaland Lowe', 'Kam Williams']
     )
     print(engine.format_prediction(result))
