@@ -72,6 +72,9 @@ CURRENT_ROSTER = [
     {'name': 'Trent Noah',        'starter': 0, 'walk_on': False},
     {'name': 'Brandon Garrison',  'starter': 0, 'walk_on': False},
     {'name': 'Jasper Johnson',    'starter': 0, 'walk_on': False},
+    {'name': 'Kam Williams',      'starter': 0, 'walk_on': False},
+    {'name': 'Jayden Quaintance', 'starter': 0, 'walk_on': False},
+    {'name': 'Jaland Lowe',       'starter': 0, 'walk_on': False},
     {'name': 'Walker Horn',       'starter': 0, 'walk_on': True},
     {'name': 'Zach Tow',          'starter': 0, 'walk_on': True},
 ]
@@ -312,13 +315,6 @@ class PredictionEngine:
         bpi_win_prob = max(0.05, bpi_win_prob - len(injuries) * 0.035)
 
         win_prob = round(0.60 * diff_win_prob + 0.40 * bpi_win_prob, 3)
-
-
-        # Display SHAP plot
-        import subprocess
-        shap_plot = os.path.join(BASE_DIR, 'notebooks', 'shap_summary_v3.png')
-        if os.path.exists(shap_plot):
-            subprocess.Popen(['open', shap_plot])  # macOS — opens in Preview
 
         return {
             'opponent':       opponent,

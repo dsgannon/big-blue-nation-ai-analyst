@@ -378,6 +378,81 @@ def get_record_splits():
         }
     
     return splits
+
+
+def get_net_rankings():
+    """Scrape NET rankings from Warren Nolan. Returns dict of {team_name: net_rank}"""
+    try:
+        response = requests.get(
+            "https://www.warrennolan.com/basketball/2026/net",
+            headers={'User-Agent': 'Mozilla/5.0'},
+            timeout=10
+        )
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(response.text, 'html.parser')
+        rankings = {}
+        for row in soup.select('table tr')[1:]:
+            cols = row.select('td')
+            if len(cols) >= 3:
+                team = cols[0].get_text(strip=True)
+                rank = cols[2].get_text(strip=True)
+                if rank.isdigit():
+                    rankings[team] = int(rank)
+        return rankings
+    except Exception as e:
+        print(f"  ⚠️ NET rankings fetch failed: {e}")
+        return {}
+
+
+# ESPN full team name → Warren Nolan short name mapping
+NET_NAME_MAP = {
+    'LSU Tigers':                 'LSU',
+    'Florida Gators':             'Florida',
+    'Auburn Tigers':              'Auburn',
+    'Tennessee Volunteers':       'Tennessee',
+    'Alabama Crimson Tide':       'Alabama',
+    'Arkansas Razorbacks':        'Arkansas',
+    'Georgia Bulldogs':           'Georgia',
+    'Mississippi State Bulldogs': 'Mississippi St.',
+    'Ole Miss Rebels':            'Ole Miss',
+    'Missouri Tigers':            'Missouri',
+    'South Carolina Gamecocks':   'South Carolina',
+    'Texas A&M Aggies':           'Texas A&M',
+    'Vanderbilt Commodores':      'Vanderbilt',
+    'Oklahoma Sooners':           'Oklahoma',
+    'Texas Longhorns':            'Texas',
+    'Duke Blue Devils':           'Duke',
+    'Michigan Wolverines':        'Michigan',
+    'Arizona Wildcats':           'Arizona',
+    'Kentucky Wildcats':          'Kentucky',
+}
+
+
+def get_opponent_net_rank(opponent_name, rankings=None):
+    """Get NET rank for an opponent by ESPN full name. Fetches rankings if not provided."""
+    if rankings is None:
+        rankings = get_net_rankings()
+    short_name = NET_NAME_MAP.get(opponent_name, opponent_name)
+    return rankings.get(short_name, rankings.get(opponent_name, 150))
+
+# ESPN team name → team ID mapping (inverse of SEC_TEAMS)
+ESPN_TEAM_IDS = {v: k for k, v in SEC_TEAMS.items()}
+
+def get_opponent_bpi(opponent_name):
+    """Get BPI for an opponent by ESPN full name."""
+    team_id = ESPN_TEAM_IDS.get(opponent_name)
+    if not team_id:
+        return 10.0
+    try:
+        url = f"https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/powerindex/{team_id}"
+        data = requests.get(url, timeout=10).json()
+        for stat in data.get('stats', []):
+            if stat.get('name') == 'bpi':
+                return float(stat.get('displayValue', 10.0))
+    except Exception:
+        return 10.0
+    return 10.0
+
 #######################################
 #######################################
 # Test it
