@@ -90,6 +90,44 @@ WIN_PROB_FEATURES = [
     'uk_is_home',
 ]
 
+# ── V3 feature lists — active after retraining with usage_rate + sos ──────────
+# usage_rate_roll3: player's share of possessions used (proxy for role/load)
+# sos_roll5:        rolling avg opp defensive quality (higher = weaker defenses faced)
+FEATURE_COLS_V3 = [
+    # Standard rolling
+    'points_roll3', 'points_roll5', 'points_season_avg',
+    'rebounds_roll3', 'assists_roll3',
+    'minutes_roll3', 'minutes_roll5',
+    'fg_pct_roll3', 'fg_pct_roll5', 'three_pct_roll3',
+    'turnovers_roll3', 'points_trend', 'minutes_trend',
+    # V2: temporal decay
+    'points_decay3', 'points_decay5',
+    'minutes_decay3', 'minutes_decay5',
+    'rebounds_decay3', 'assists_decay3',
+    # V2: hot/cold streak
+    'hot_streak', 'usage_trend',
+    # V3: usage rate + strength of schedule
+    'usage_rate_roll3', 'sos_roll5',
+    # Context
+    'is_home', 'game_number', 'starter',
+    'is_current_season', 'season_segment',
+    'days_rest', 'is_back_to_back',
+    'opp_avg_points_allowed', 'opp_avg_rebounds', 'opp_avg_turnovers_forced',
+    'player_encoded', 'position_encoded', 'opponent_encoded',
+    # Chained minutes
+    'predicted_minutes',
+]
+
+MINUTES_FEATURES_V3 = [
+    'minutes_roll3', 'minutes_roll5', 'minutes_season_avg', 'minutes_trend',
+    'minutes_decay3', 'minutes_decay5',
+    'usage_rate_roll3', 'sos_roll5',
+    'starter', 'is_home', 'game_number',
+    'is_current_season', 'season_segment',
+    'days_rest', 'is_back_to_back',
+    'player_encoded', 'position_encoded',
+]
+
 # Kentucky constants (update each season from team_metrics table)
 UK_BPI = 16.6
 
@@ -169,7 +207,23 @@ class PredictionEngine:
         except FileNotFoundError:
             self._win_prob_v2 = False
 
-        print("✅ Models loaded from disk")
+        # Detect feature version from trained model's stored feature names
+        try:
+            trained_features = self.model_v3.get_booster().feature_names or []
+            if 'usage_rate_roll3' in trained_features:
+                self._feature_version = 'v3'
+                self._feature_cols    = FEATURE_COLS_V3
+                self._minutes_cols    = MINUTES_FEATURES_V3
+            else:
+                self._feature_version = 'v2'
+                self._feature_cols    = FEATURE_COLS
+                self._minutes_cols    = MINUTES_FEATURES
+        except Exception:
+            self._feature_version = 'v2'
+            self._feature_cols    = FEATURE_COLS
+            self._minutes_cols    = MINUTES_FEATURES
+
+        print(f"✅ Models loaded from disk (feature version: {self._feature_version})")
 
     # ── Data loading ───────────────────────────────────────────────────────────
 
@@ -261,6 +315,35 @@ class PredictionEngine:
         }
 
     # ── Core prediction methods ────────────────────────────────────────────────
+
+    # ── V3 feature helpers ─────────────────────────────────────────────────────
+
+    def _compute_usage_rate(self, player_history, n: int = 3) -> float:
+        """
+        Simplified usage rate proxy: possessions used per minute.
+          usage = (fg_att + 0.44 * ft_att + turnovers) / minutes
+        Returns rolling mean over the last n games.
+        """
+        rates = []
+        for _, row in player_history.tail(n + 1).head(n).iterrows():  # last n (shifted)
+            mins = float(row.get('minutes', 0))
+            if mins < 1:
+                continue
+            fg_att = float(row.get('fg_att', 0))
+            ft_att = float(row.get('ft_att', 0))
+            tov    = float(row.get('turnovers', 0))
+            rates.append((fg_att + 0.44 * ft_att + tov) / mins)
+        return float(np.mean(rates)) if rates else 0.0
+
+    def _compute_sos(self, player_history, n: int = 5) -> float:
+        """
+        Strength of schedule proxy: rolling mean of opp_avg_points_allowed
+        for the last n games. Higher value = weaker defenses faced recently
+        (player has had an easier schedule).
+        """
+        vals = player_history['opp_avg_points_allowed'].dropna().tolist()
+        recent = vals[-n:] if len(vals) >= n else vals
+        return float(np.mean(recent)) if recent else 75.6
 
     # ── Confidence interval helpers ────────────────────────────────────────────
 
@@ -423,6 +506,10 @@ class PredictionEngine:
             if col not in row or pd.isna(row.get(col)):
                 row[col] = decay_feats.get(col, 0.0)
 
+        # ── Compute V3 features ────────────────────────────────────────────────
+        row['usage_rate_roll3'] = self._compute_usage_rate(player_data, n=3)
+        row['sos_roll5']        = self._compute_sos(player_data, n=5)
+
         # ── Opponent defensive context ─────────────────────────────────────────
         opp_def = self.df_model[self.df_model['opponent'] == opponent][
             ['opp_avg_points_allowed', 'opp_avg_rebounds', 'opp_avg_turnovers_forced']
@@ -446,7 +533,7 @@ class PredictionEngine:
             row['starter'] = int(starter)
 
         # ── Step 1: Predict minutes ────────────────────────────────────────────
-        X_min = pd.DataFrame([row[MINUTES_FEATURES]])
+        X_min = pd.DataFrame([row[self._minutes_cols]])
         pred_minutes = max(0.0, float(self.minutes_model.predict(X_min)[0]))
 
         # ── Step 2: Update rolling minutes with predicted value ────────────────
@@ -455,7 +542,7 @@ class PredictionEngine:
         row['predicted_minutes'] = pred_minutes
 
         # ── Step 3: Predict points/rebounds/assists ────────────────────────────
-        X_pts = pd.DataFrame([row[FEATURE_COLS]])
+        X_pts = pd.DataFrame([row[self._feature_cols]])
         pred_points   = max(0.0, float(self.model_v3.predict(X_pts)[0]))
         pred_rebounds = max(0.0, float(self.reb_model.predict(X_pts)[0]))
         pred_assists  = max(0.0, float(self.ast_model.predict(X_pts)[0]))

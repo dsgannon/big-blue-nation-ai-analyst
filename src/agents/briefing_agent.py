@@ -15,6 +15,9 @@ from ingestion.espn_client import(
     get_team_metrics,
     get_next_game,
     get_sec_standings,
+    get_net_rankings,
+    get_opponent_net_rank,
+    get_opponent_bpi,
 )
 
 from models.prediction_engine import PredictionEngine
@@ -23,7 +26,8 @@ load_dotenv()
 
 KENTUCKY_TEAM_ID = "96"
 
-def build_context(stories, metrics, rankings, next_game, standings, prediction_text=""):
+def build_context(stories, metrics, rankings, next_game, standings,
+                  prediction_text="", opp_net_rank=None, opp_bpi=None):
     """Build context string to feed to Mistral"""
 
     # Rankings
@@ -43,7 +47,15 @@ def build_context(stories, metrics, rankings, next_game, standings, prediction_t
         from datetime import datetime as dt
         game_dt = dt.fromisoformat(next_game['date'].replace('Z', '+00:00'))
         game_time = game_dt.astimezone(eastern).strftime("%A, %B %d @ %I:%M %p ET")
-        next_game_str = f"{next_game['name']} — {game_time} on {next_game['network'] or 'TBD'} at {next_game['venue_name']}"
+        opp_context = ""
+        if opp_net_rank is not None:
+            opp_context += f" | Opponent NET Rank: #{opp_net_rank}"
+        if opp_bpi is not None:
+            opp_context += f" | Opponent BPI: {opp_bpi:.1f}"
+        next_game_str = (
+            f"{next_game['name']} — {game_time} on {next_game['network'] or 'TBD'}"
+            f" at {next_game['venue_name']}{opp_context}"
+        )
     else:
         next_game_str = "No upcoming games scheduled"
 
@@ -163,34 +175,52 @@ def run_briefing(tone="fan"):
     print("=" * 55)
 
     print("\n📡 Gathering data...")
-    stories = get_top_stories(limit=8)
-    metrics = get_team_metrics()
-    rankings = get_kentucky_rankings()
+    stories   = get_top_stories(limit=8)
+    metrics   = get_team_metrics()
+    rankings  = get_kentucky_rankings()
+    standings = get_sec_standings()
     next_game = get_next_game()
-    # Game prediction
+
+    # ── Auto-fetch opponent NET rank and BPI ───────────────────────────────────
+    opp_net_rank = None
+    opp_bpi_val  = None
     prediction_text = ""
     try:
-        next_game_data = get_next_game()
-        if next_game_data:
+        if next_game:
+            opponent = (
+                next_game.get('away_team')
+                if next_game.get('home_team') == 'Kentucky Wildcats'
+                else next_game.get('home_team')
+            )
+            is_home = 1 if next_game.get('home_team') == 'Kentucky Wildcats' else 0
+
+            print(f"📡 Fetching NET rank and BPI for {opponent}...")
+            net_rankings  = get_net_rankings()
+            opp_net_rank  = get_opponent_net_rank(opponent, net_rankings)
+            opp_bpi_val   = get_opponent_bpi(opponent)
+            print(f"   NET #{opp_net_rank} | BPI {opp_bpi_val:.1f}")
+
             engine = PredictionEngine()
-            opponent = next_game_data.get('away_team') if next_game_data.get('home_team') == 'Kentucky Wildcats' else next_game_data.get('home_team')
-            is_home  = 1 if next_game_data.get('home_team') == 'Kentucky Wildcats' else 0
-            result   = engine.predict_game(
-                opponent  = opponent,
-                is_home   = is_home,
-                net_rank  = 120,
-                opp_bpi   = 10.0,
-                injuries  = ['Jayden Quaintance', 'Jaland Lowe', 'Kam Williams']
+            result = engine.predict_game(
+                opponent        = opponent,
+                is_home         = is_home,
+                net_rank        = int(opp_net_rank),
+                opp_bpi         = float(opp_bpi_val),
+                injuries        = ['Jayden Quaintance', 'Jaland Lowe'],
             )
             prediction_text = engine.format_prediction(result)
             print("✅ Game prediction generated")
     except Exception as e:
         print(f"⚠️  Prediction failed: {e}")
         prediction_text = ""
-    standings = get_sec_standings()
 
     print("🤖 Generating briefing with Mistral...")
-    context = build_context(stories, metrics, rankings, next_game, standings, prediction_text)
+    context = build_context(
+        stories, metrics, rankings, next_game, standings,
+        prediction_text=prediction_text,
+        opp_net_rank=opp_net_rank,
+        opp_bpi=opp_bpi_val,
+    )
     briefing = generate_briefing(context, tone=tone)
 
     print("\n" + "=" * 55)

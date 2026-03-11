@@ -101,9 +101,18 @@ except ValueError as e:
 PYEOF
 echo ""
 
-# ── Step 3: Optional full report ─────────────────────────────────────────────
+# ── Step 3: Recompute player thresholds ──────────────────────────────────────
+echo "━━━ Step 3: Recomputing Thresholds ━━━━━━━━━━━━━━━━━━━━━━━━━━"
+"$VENV_PYTHON" -c "
+import sys; sys.path.insert(0, '.')
+from src.models.thresholds import compute_thresholds
+compute_thresholds()
+"
+echo ""
+
+# ── Step 4: Optional full report ─────────────────────────────────────────────
 if [[ $DO_REPORT -eq 1 ]]; then
-  echo "━━━ Step 3: Validation Report ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "━━━ Step 4: Validation Report ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   "$VENV_PYTHON" -c "
 import sys; sys.path.insert(0, '.')
 from src.models.validation import validation_report

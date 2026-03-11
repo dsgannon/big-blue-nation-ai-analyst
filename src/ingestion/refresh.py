@@ -17,6 +17,7 @@ from ingestion.espn_client import (
     get_all_sec_bpi,
 )
 from ingestion.boxscore_client import get_game_boxscore
+from models.thresholds import compute_thresholds
 from ingestion.database import (
     create_tables,
     get_connection,
@@ -157,6 +158,11 @@ def run_refresh():
         # Opponent BPI snapshots
         log.info("Refreshing opponent BPI history...")
         _refresh_opponent_bpi()
+
+        # Recompute thresholds with latest game data
+        log.info("Recomputing player thresholds...")
+        compute_thresholds(verbose=False)
+        log.info("Player thresholds updated ✅")
 
         # Summary
         elapsed = (datetime.now() - start).seconds
