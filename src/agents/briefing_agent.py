@@ -1,4 +1,4 @@
-import ollama
+import anthropic
 import sys
 import os
 from datetime import datetime
@@ -100,40 +100,43 @@ TOP STORIES:
     return context
 
 def generate_briefing(context, tone="fan"):
-    """Use Minstral to generate the daily breifing"""
+    """Use Claude to generate the daily briefing"""
 
     if tone == "fan":
-        tone_instruction = "You are an enthusiastic Kentucky Wildcats superfan and knowledgeable basketball analyst Write with energy and passion for Big Blue Nation. Use 'Cats' and 'BBN' naturally."
+        tone_instruction = "You are an enthusiastic Kentucky Wildcats superfan and knowledgeable basketball analyst. Write with energy and passion for Big Blue Nation. Use 'Cats' and 'BBN' naturally."
     else:
-        tone_instruction = "You are a neurtral, professional college basketball analyst covering Kentucky Wildcasts Basketball."
-    
+        tone_instruction = "You are a neutral, professional college basketball analyst covering Kentucky Wildcats Basketball."
+
     prompt = f"""{tone_instruction}
 
 Using the data below, write a daily Kentucky Basketball morning briefing.
 Structure it as:
-1. Opening headline setence capturing the most important thing happening right now
+1. Opening headline sentence capturing the most important thing happening right now
 2. Current situation - record, standings, how the season is going (2-3 sentences)
-3. Top stories - cover the 3 most important new items with context (3-4 sentences each)
+3. Top stories - cover the 3 most important news items with context (3-4 sentences each)
 4. Next game preview - who they play, when, where, what to watch for (2-3 sentences)
 5. Big picture - tournament outlook, what needs to happen (2-3 sentences)
 6. Closing hype sentence for BBN
 
 Keep the total briefing to around 300-400 words. Be specific with names, numbers and facts.
 
-IMPORTANT: Use ONLY the exact numbers provided in the data below. 
-Do not invent stats, scores, injury reports, or records. 
+IMPORTANT: Use ONLY the exact numbers provided in the data below.
+Do not invent stats, scores, injury reports, or records.
 If the game prediction section shows a win probability, use that exact number.
 
 {context}
 
 Write the briefing now:"""
 
-    response = ollama.chat(
-        model="mistral:7b",
+    client = anthropic.Anthropic()
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system="You are a Kentucky basketball analyst. Use ONLY the exact stats provided. Do not invent or hallucinate any numbers.",
         messages=[{"role": "user", "content": prompt}]
     )
 
-    return response["message"]["content"]
+    return response.content[0].text
 
 def send_email(briefing):
     """Email the daily briefing"""
