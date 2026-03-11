@@ -270,6 +270,24 @@ class PredictionEngine:
             for _, row in thresholds_raw.iterrows()
         }
 
+        # V8: season trajectory — rolling win rate over last 10 games
+        try:
+            games_raw = pd.read_sql("""
+                SELECT id as game_id, home_team, home_score, away_score, date as game_date
+                FROM games WHERE home_score IS NOT NULL AND away_score IS NOT NULL
+                ORDER BY date
+            """, conn)
+            games_raw['home_score'] = pd.to_numeric(games_raw['home_score'], errors='coerce')
+            games_raw['away_score'] = pd.to_numeric(games_raw['away_score'], errors='coerce')
+            games_raw['uk_won'] = (
+                ((games_raw['home_team'] == 'Kentucky Wildcats') & (games_raw['home_score'] > games_raw['away_score'])) |
+                ((games_raw['home_team'] != 'Kentucky Wildcats') & (games_raw['away_score'] > games_raw['home_score']))
+            ).astype(int)
+            win_series = games_raw['uk_won'].shift(1).rolling(10, min_periods=5).mean().fillna(0.5)
+            self._uk_win_rate_roll10 = float(win_series.iloc[-1]) if len(win_series) > 0 else 0.5
+        except Exception:
+            self._uk_win_rate_roll10 = 0.5
+
         conn.close()
         print(f"✅ Data loaded: {len(self.df_model)} player records, "
               f"{len(self.opp_model_df)} opponent games")
@@ -478,6 +496,23 @@ class PredictionEngine:
             if p['name'] not in injuries and not p.get('walk_on', False)
         ]
 
+        # ── Injury minutes redistribution ──────────────────────────────────────
+        minutes_scale = 1.0
+        if injuries:
+            injured_avg_mins = 0.0
+            active_avg_mins  = 0.0
+            for p in roster:
+                if p.get('walk_on'):
+                    continue
+                hist = self.df_model[self.df_model['player_name'] == p['name']]
+                avg_min = float(hist['minutes'].tail(5).mean()) if len(hist) > 0 else 0.0
+                if p['name'] in injuries:
+                    injured_avg_mins += avg_min
+                else:
+                    active_avg_mins += avg_min
+            if active_avg_mins > 0 and injured_avg_mins > 0:
+                minutes_scale = min(1.35, (active_avg_mins + injured_avg_mins) / active_avg_mins)
+
         projections = []
         for p in active_roster:
             result = self.predict_player_with_ci(
@@ -491,6 +526,11 @@ class PredictionEngine:
                 z               = z,
             )
             if result:
+                # Apply minutes scale to CI prediction's minutes output
+                if minutes_scale != 1.0:
+                    result['minutes']    = min(40.0, round(result['minutes'] * minutes_scale, 1))
+                    result['minutes_lo'] = min(40.0, round(result.get('minutes_lo', result['minutes']) * minutes_scale, 1))
+                    result['minutes_hi'] = min(40.0, round(result.get('minutes_hi', result['minutes']) * minutes_scale, 1))
                 projections.append(result)
 
         uk_score = sum(p['points'] for p in projections)
@@ -543,7 +583,7 @@ class PredictionEngine:
 
     def predict_player(self, player_name, opponent, is_home, net_rank,
                        days_rest=3, is_back_to_back=0, starter=None,
-                       season_segment=3):
+                       season_segment=3, minutes_scale=1.0):
         """
         Predict points/rebounds/assists/minutes for a single player.
         Uses chained minutes → stats pipeline with V2 decay features.
@@ -635,6 +675,9 @@ class PredictionEngine:
         if 'steals_roll3' not in row or pd.isna(row.get('steals_roll3')):
             row['steals_roll3'] = float(recent3['steals'].mean()) if 'steals' in recent3.columns else 0.5
 
+        # ── V8: Season trajectory ──────────────────────────────────────────────
+        row['uk_win_rate_roll10'] = self._uk_win_rate_roll10
+
         # ── Opponent defensive context ─────────────────────────────────────────
         opp_def = self.df_model[self.df_model['opponent'] == opponent][
             ['opp_avg_points_allowed', 'opp_avg_rebounds', 'opp_avg_turnovers_forced']
@@ -659,7 +702,9 @@ class PredictionEngine:
 
         # ── Step 1: Predict minutes ────────────────────────────────────────────
         X_min = pd.DataFrame([row[self._minutes_cols]])
-        pred_minutes = max(0.0, float(self.minutes_model.predict(X_min)[0]))
+        pred_minutes = max(0.0, float(self.minutes_model.predict(X_min)[0]) * minutes_scale)
+        # Cap at 40 minutes (OT rarely changes predictions materially)
+        pred_minutes = min(pred_minutes, 40.0)
 
         # ── Step 2: Update rolling minutes with predicted value ────────────────
         row['minutes_roll3'] = (row['minutes_roll3'] * 2 + pred_minutes) / 3
@@ -723,6 +768,15 @@ class PredictionEngine:
             uk_def_roll5  = global_def_mean
             uk_def_season = global_def_mean
 
+        # opp_off_eff_roll3: opponent's rolling offensive efficiency
+        global_opp_eff = float(self.opp_model_df['opp_off_eff'].mean()) if 'opp_off_eff' in self.opp_model_df.columns else 108.3
+        if len(opp_games) > 0 and 'opp_off_eff' in opp_games.columns:
+            opp_off_eff_roll3 = float(opp_games['opp_off_eff'].tail(3).mean())
+            if pd.isna(opp_off_eff_roll3):
+                opp_off_eff_roll3 = global_opp_eff
+        else:
+            opp_off_eff_roll3 = global_opp_eff
+
         opp_input = pd.DataFrame([{
             'net_rank':            int(net_rank),
             'uk_is_home':          int(is_home),
@@ -737,6 +791,7 @@ class PredictionEngine:
             'uk_bpi_defense':      uk_bpi_defense,
             'opp_bpi':             float(opp_bpi) if opp_bpi is not None else 10.0,
             'game_pace_roll3':     float(self.game_stats_df['uk_possessions'].tail(3).mean()) if hasattr(self, 'game_stats_df') and len(self.game_stats_df) >= 1 else 70.0,
+            'opp_off_eff_roll3':   opp_off_eff_roll3,
         }])
 
         # Match features to whatever the model was trained with
@@ -794,6 +849,26 @@ class PredictionEngine:
             if p['name'] not in injuries and not p.get('walk_on', False)
         ]
 
+        # ── Injury minutes redistribution ──────────────────────────────────────
+        # Compute how many minutes injured players typically play, then scale
+        # up active players proportionally so total approaches ~200 min/game.
+        minutes_scale = 1.0
+        if injuries:
+            injured_avg_mins = 0.0
+            active_avg_mins  = 0.0
+            for p in roster:
+                if p.get('walk_on'):
+                    continue
+                hist = self.df_model[self.df_model['player_name'] == p['name']]
+                avg_min = float(hist['minutes'].tail(5).mean()) if len(hist) > 0 else 0.0
+                if p['name'] in injuries:
+                    injured_avg_mins += avg_min
+                else:
+                    active_avg_mins += avg_min
+            if active_avg_mins > 0 and injured_avg_mins > 0:
+                # Cap scale at 1.35 to avoid extreme extrapolation
+                minutes_scale = min(1.35, (active_avg_mins + injured_avg_mins) / active_avg_mins)
+
         # ── Player projections ─────────────────────────────────────────────────
         projections = []
         for p in active_roster:
@@ -805,6 +880,7 @@ class PredictionEngine:
                 days_rest       = days_rest,
                 is_back_to_back = is_back_to_back,
                 starter         = p['starter'],
+                minutes_scale   = minutes_scale,
             )
             if result:
                 projections.append(result)

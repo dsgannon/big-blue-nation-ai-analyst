@@ -26,6 +26,7 @@
     "uk_team_3pt_roll3",
     "uk_fg_pct_vs_opp_hist",
     "uk_three_pct_vs_opp_hist",
+    "uk_win_rate_roll10",
     "is_home",
     "neutral_site",
     "conf_game",
@@ -55,6 +56,7 @@
     "role_stability",
     "cumulative_minutes_last3",
     "uk_possessions_roll3",
+    "uk_win_rate_roll10",
     "starter",
     "is_home",
     "game_number",
@@ -78,7 +80,8 @@
     "uk_def_season",
     "uk_bpi_defense",
     "opp_bpi",
-    "game_pace_roll3"
+    "game_pace_roll3",
+    "opp_off_eff_roll3"
   ],
   "WIN_PROB_FEATURES": [
     "margin_bucket",

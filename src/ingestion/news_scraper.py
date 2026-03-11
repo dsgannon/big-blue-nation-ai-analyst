@@ -1,6 +1,5 @@
 import requests
 import feedparser
-import praw
 import sqlite3
 import os
 from datetime import datetime, timezone, timedelta
@@ -87,38 +86,38 @@ def scrape_rss_feeds():
 
 
 def scrape_reddit():
-    """Scrape r/KentuckyWildcats for relevant posts"""
+    """Scrape r/KentuckyWildcats for relevant posts via public JSON API (no auth needed)."""
     articles = []
 
     try:
-        # Use read-only mode — no credentials needed for public subreddits
-        reddit = praw.Reddit(
-            client_id="readonly",
-            client_secret="readonly",
-            user_agent="big-blue-nation-ai-analyst:v1.0"
-        )
+        url = "https://www.reddit.com/r/KentuckyWildcats/hot.json?limit=25"
+        headers = {"User-Agent": "big-blue-nation-ai-analyst:v1.0 (by /u/bbn_ai)"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
 
-        subreddit = reddit.subreddit("KentuckyWildcats")
+        data = resp.json()
         cutoff = datetime.now(timezone.utc) - timedelta(days=2)
 
-        for post in subreddit.hot(limit=25):
-            pub_date = datetime.fromtimestamp(post.created_utc, tz=timezone.utc)
+        for child in data.get("data", {}).get("children", []):
+            post = child.get("data", {})
+            created_utc = post.get("created_utc", 0)
+            pub_date = datetime.fromtimestamp(created_utc, tz=timezone.utc)
 
             if pub_date < cutoff:
                 continue
 
-            # Only grab posts with meaningful engagement
-            if post.score < 10:
+            score = post.get("score", 0)
+            if score < 10:
                 continue
 
             articles.append({
                 "source": "Reddit",
-                "title": post.title,
-                "summary": post.selftext[:500] if post.selftext else "",
-                "url": f"https://reddit.com{post.permalink}",
+                "title": post.get("title", ""),
+                "summary": (post.get("selftext") or "")[:500],
+                "url": f"https://reddit.com{post.get('permalink', '')}",
                 "published": pub_date.isoformat(),
-                "score": post.score,
-                "comments": post.num_comments,
+                "score": score,
+                "comments": post.get("num_comments", 0),
             })
 
         print(f"  ✅ Reddit: {len(articles)} posts")

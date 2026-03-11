@@ -317,6 +317,73 @@ def load_opponent_bpi(opponent_name):
     from src.ingestion.espn_client import get_opponent_bpi
     return get_opponent_bpi(opponent_name)
 
+
+@st.cache_data(ttl=1800)
+def load_game_odds():
+    try:
+        from src.ingestion.odds_scraper import get_next_game_odds
+        return get_next_game_odds()
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=600)
+def load_player_game_log():
+    """Load per-player per-game stats for sparklines."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql("""
+            SELECT p.player_name, g.date as game_date, SUM(p.points) as points,
+                   SUM(p.rebounds) as rebounds, SUM(p.assists) as assists
+            FROM player_game_stats p
+            JOIN games g ON g.id = p.game_id
+            WHERE p.season = '2025-26' AND g.status = 'STATUS_FINAL'
+            GROUP BY p.player_name, p.game_id, g.date
+            ORDER BY p.player_name, g.date
+        """, conn)
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_season_game_log():
+    """Load completed game results for the season game log tab."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql("""
+            SELECT g.date, g.name, g.home_team, g.away_team,
+                   g.home_score, g.away_score, g.neutral_site, g.season_type
+            FROM games g
+            WHERE g.season = '2025-26' AND g.status = 'STATUS_FINAL'
+            ORDER BY g.date DESC
+        """, conn)
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_prediction_accuracy():
+    """Load predicted vs actual scores for games with saved predictions."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql("""
+            SELECT gp.game_id, gp.game_date, gp.opponent,
+                   gp.predicted_uk_score, gp.predicted_opp_score,
+                   g.home_team, g.home_score, g.away_score
+            FROM game_predictions gp
+            LEFT JOIN games g ON g.id = gp.game_id
+            WHERE g.status = 'STATUS_FINAL'
+            ORDER BY gp.game_date DESC
+        """, conn)
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
+
 @st.cache_data(ttl=3600)
 def load_net_rankings():
     from src.ingestion.espn_client import get_net_rankings
@@ -412,6 +479,36 @@ with st.sidebar:
         if st.checkbox(player, value=(player in default_out)):
             injuries.append(player)
 
+    # ── Vegas Odds ─────────────────────────────────────────────────────────────
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">💰 Vegas Odds</div>', unsafe_allow_html=True)
+    game_odds = load_game_odds()
+    if game_odds:
+        spread_str = f"{game_odds['spread']:+.1f}" if game_odds.get('spread') is not None else "N/A"
+        ou_str     = str(game_odds['over_under']) if game_odds.get('over_under') is not None else "N/A"
+        uk_ml_str  = f"{game_odds['uk_moneyline']:+d}" if game_odds.get('uk_moneyline') is not None else "N/A"
+        spread_color = "#4caf7d" if game_odds.get('spread') is not None and game_odds['spread'] < 0 else "#e05c5c"
+        st.markdown(f"""
+        <div style="background:#0d1f3c;border:1px solid #1e2a4a;border-radius:6px;
+                    padding:0.7rem 0.9rem;font-size:0.83rem">
+          <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem">
+            <span style="color:#5a7aa8">Spread (UK)</span>
+            <span style="color:{spread_color};font-weight:700">{spread_str}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem">
+            <span style="color:#5a7aa8">Over/Under</span>
+            <span style="color:#e8eaf0;font-weight:600">{ou_str}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:#5a7aa8">UK Moneyline</span>
+            <span style="color:#e8eaf0;font-weight:600">{uk_ml_str}</span>
+          </div>
+          <div style="font-size:0.68rem;color:#3a4a6a;margin-top:0.4rem">{game_odds.get('provider','')}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.caption("Odds not yet available.")
+
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     run_btn = st.button("🔮 Run Prediction", use_container_width=True, type="primary")
 
@@ -475,8 +572,8 @@ st.markdown(f"""
 
 
 # ── Main content ───────────────────────────────────────────────────────────────
-tab_game, tab_players, tab_sim, tab_models = st.tabs(
-    ["🏀 Game Predictions", "👥 Player Predictions", "🎲 Simulation", "📊 Model Insights"]
+tab_game, tab_players, tab_sim, tab_models, tab_gamelog = st.tabs(
+    ["🏀 Game Predictions", "👥 Player Predictions", "🎲 Simulation", "📊 Model Insights", "📋 Season Log"]
 )
 if 'result' not in st.session_state:
     st.session_state.result = None
@@ -661,6 +758,78 @@ with tab_players:
     col2.metric("Team Rebounds", f"{tot_reb:.1f}")
     col3.metric("Team Assists",  f"{tot_ast:.1f}")
     col4.metric("Team Minutes",  f"{tot_min:.0f}")
+
+    # ── Player Sparklines (Item 8) ─────────────────────────────────────────────
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Recent Scoring Trends — Last 8 Games</div>',
+                unsafe_allow_html=True)
+    player_log = load_player_game_log()
+    if not player_log.empty:
+        projected_names = [p['name'] for p in result['projections']]
+        spark_players   = [p for p in result['projections']
+                           if p['name'] in player_log['player_name'].values]
+
+        if spark_players:
+            from plotly.subplots import make_subplots
+
+            n_cols  = min(4, len(spark_players))
+            n_rows  = (len(spark_players) + n_cols - 1) // n_cols
+            fig_sp  = make_subplots(rows=n_rows, cols=n_cols,
+                                    subplot_titles=[p['name'].split()[-1] for p in spark_players],
+                                    horizontal_spacing=0.06, vertical_spacing=0.18)
+
+            for idx, p in enumerate(spark_players):
+                r = idx // n_cols + 1
+                c = idx % n_cols + 1
+                hist = player_log[player_log['player_name'] == p['name']].tail(8)
+                xs   = list(range(1, len(hist) + 1))
+                ys   = hist['points'].tolist()
+                pred = p['points']
+
+                avg_y = sum(ys) / len(ys) if ys else pred
+                line_color = '#4caf7d' if pred >= avg_y else '#e05c5c'
+
+                fig_sp.add_trace(go.Scatter(
+                    x=xs, y=ys,
+                    mode='lines+markers',
+                    line=dict(color='#4a90d9', width=1.5),
+                    marker=dict(size=4, color='#4a90d9'),
+                    showlegend=False,
+                    hovertemplate='G%{x}: %{y} pts<extra></extra>',
+                ), row=r, col=c)
+
+                # Add projection point
+                fig_sp.add_trace(go.Scatter(
+                    x=[len(xs) + 1], y=[pred],
+                    mode='markers',
+                    marker=dict(size=8, color=line_color, symbol='diamond'),
+                    showlegend=False,
+                    hovertemplate=f'Proj: {pred:.1f} pts<extra></extra>',
+                ), row=r, col=c)
+
+                # Average line
+                if ys:
+                    fig_sp.add_hline(y=avg_y, line=dict(color='#2a3a5c', width=1, dash='dot'),
+                                     row=r, col=c)
+
+            fig_sp.update_layout(
+                height=130 * n_rows + 40,
+                paper_bgcolor='#111827',
+                plot_bgcolor='#111827',
+                font=dict(color='#5a7aa8', size=10),
+                margin=dict(t=40, b=20, l=30, r=10),
+            )
+            for ax in fig_sp.layout:
+                if ax.startswith('xaxis') or ax.startswith('yaxis'):
+                    fig_sp.layout[ax].update(
+                        gridcolor='#1e2a4a',
+                        showticklabels=False,
+                        zeroline=False,
+                    )
+            st.plotly_chart(fig_sp, use_container_width=True, config={'displayModeBar': False})
+            st.caption("Blue line = last 8 games · Diamond = today's projection · Dotted = season avg")
+    else:
+        st.caption("No game history yet for sparklines.")
 
 
 # ── Win Probability Simulator ──────────────────────────────────────────────────
@@ -974,6 +1143,125 @@ with tab_models:
             st.markdown('<div class="section-title">Post-Game Validation</div>',
                     unsafe_allow_html=True)
             st.dataframe(val_df, use_container_width=True, hide_index=True)
+
+        # ── Prediction Accuracy Chart (Item 10) ────────────────────────────────
+        acc_df = load_prediction_accuracy()
+        if acc_df is not None and len(acc_df) > 0:
+            st.markdown('<hr class="divider">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">Score Prediction Accuracy</div>',
+                    unsafe_allow_html=True)
+
+            # Compute actual UK/opp scores
+            acc_df['uk_actual']  = acc_df.apply(
+                lambda r: int(r['home_score']) if r['home_team'] == 'Kentucky Wildcats'
+                          else int(r['away_score']),
+                axis=1
+            )
+            acc_df['opp_actual'] = acc_df.apply(
+                lambda r: int(r['away_score']) if r['home_team'] == 'Kentucky Wildcats'
+                          else int(r['home_score']),
+                axis=1
+            )
+            acc_df['uk_error']   = acc_df['predicted_uk_score']  - acc_df['uk_actual']
+            acc_df['opp_error']  = acc_df['predicted_opp_score'] - acc_df['opp_actual']
+            acc_df['label']      = acc_df['opponent'].str.split().str[-1] + ' ' + \
+                                   acc_df['game_date'].astype(str).str[:10]
+
+            fig_acc = go.Figure()
+            fig_acc.add_trace(go.Bar(
+                x=acc_df['label'], y=acc_df['uk_error'],
+                name='UK Error', marker_color='#4a90d9',
+                hovertemplate='%{x}<br>UK Error: %{y:+.1f} pts<extra></extra>',
+            ))
+            fig_acc.add_trace(go.Bar(
+                x=acc_df['label'], y=acc_df['opp_error'],
+                name='Opp Error', marker_color='#e05c5c',
+                hovertemplate='%{x}<br>Opp Error: %{y:+.1f} pts<extra></extra>',
+            ))
+            fig_acc.add_hline(y=0, line=dict(color='#3a4a6a', width=1))
+            fig_acc.update_layout(
+                height=220, barmode='group',
+                margin=dict(t=10, b=50, l=40, r=10),
+                paper_bgcolor='#111827', plot_bgcolor='#111827',
+                font_color='#5a7aa8',
+                xaxis=dict(gridcolor='#1e2a4a'),
+                yaxis=dict(title='Pred − Actual (pts)', gridcolor='#1e2a4a'),
+                legend=dict(font=dict(size=10), bgcolor='rgba(0,0,0,0)'),
+            )
+            st.plotly_chart(fig_acc, use_container_width=True, config={'displayModeBar': False})
+
+            uk_mae  = acc_df['uk_error'].abs().mean()
+            opp_mae = acc_df['opp_error'].abs().mean()
+            st.caption(f"UK score MAE: {uk_mae:.1f} pts · Opp score MAE: {opp_mae:.1f} pts · "
+                       f"n={len(acc_df)} validated games")
+
+# ── Season Game Log Tab (Item 9) ───────────────────────────────────────────────
+with tab_gamelog:
+    st.markdown('<div class="section-title">2025-26 Season Game Log</div>',
+                unsafe_allow_html=True)
+    game_log_df = load_season_game_log()
+    if not game_log_df.empty:
+        rows = []
+        for _, g in game_log_df.iterrows():
+            uk_is_home = g['home_team'] == 'Kentucky Wildcats'
+            opponent   = g['away_team'] if uk_is_home else g['home_team']
+            try:
+                uk_score_act  = int(g['home_score']) if uk_is_home else int(g['away_score'])
+                opp_score_act = int(g['away_score']) if uk_is_home else int(g['home_score'])
+                result_str    = 'W' if uk_score_act > opp_score_act else 'L'
+                margin        = uk_score_act - opp_score_act
+                score_str     = f"{uk_score_act}-{opp_score_act}"
+            except (ValueError, TypeError):
+                result_str = '?'
+                margin     = 0
+                score_str  = '—'
+
+            venue = 'H' if uk_is_home else ('N' if g.get('neutral_site') else 'A')
+            rows.append({
+                'Date':     g['date'][:10] if g['date'] else '—',
+                'Opponent': opponent or '—',
+                'Venue':    venue,
+                'Score':    score_str,
+                'W/L':      result_str,
+                'Margin':   f"+{margin}" if margin > 0 else str(margin),
+                'Type':     g.get('season_type', '') or '',
+            })
+
+        log_display = pd.DataFrame(rows)
+
+        def _color_wl(val):
+            if val == 'W':
+                return 'color: #4caf7d; font-weight: 700'
+            elif val == 'L':
+                return 'color: #e05c5c; font-weight: 700'
+            return ''
+
+        def _color_margin(val):
+            try:
+                v = int(val.replace('+', ''))
+                return 'color: #4caf7d' if v > 0 else 'color: #e05c5c'
+            except Exception:
+                return ''
+
+        wins   = len([r for r in rows if r['W/L'] == 'W'])
+        losses = len([r for r in rows if r['W/L'] == 'L'])
+        avg_margin = sum(int(r['Margin'].replace('+','')) for r in rows if r['Margin'] != '—') / max(len(rows), 1)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Record", f"{wins}-{losses}")
+        c2.metric("Avg Margin", f"{avg_margin:+.1f}")
+        c3.metric("Games Played", str(len(rows)))
+
+        st.dataframe(
+            log_display.style
+                .applymap(_color_wl, subset=['W/L'])
+                .applymap(_color_margin, subset=['Margin']),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No completed games yet this season.")
+
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown("""
