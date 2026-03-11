@@ -76,6 +76,7 @@ MINUTES_FEATURES = [
 ]
 
 OPP_FEATURES = [
+    'net_rank',
     'uk_is_home',
     'opp_pts_roll3', 'opp_pts_roll5',
     'opp_fg_pct_roll3', 'opp_three_pct_roll3', 'opp_reb_roll3',
@@ -597,6 +598,7 @@ class PredictionEngine:
             uk_def_season = global_def_mean
 
         opp_input = pd.DataFrame([{
+            'net_rank':            int(net_rank),
             'uk_is_home':          int(is_home),
             'opp_pts_roll3':       opp_pts_roll3,
             'opp_pts_roll5':       opp_pts_roll5,
@@ -609,13 +611,10 @@ class PredictionEngine:
             'uk_bpi_defense':      uk_bpi_defense,
         }])
 
-        # Handle old model that doesn't have uk_bpi_defense feature
-        try:
-            return round(float(self.opp_model_v4.predict(opp_input)[0]), 1)
-        except Exception:
-            # Fallback: drop the new feature for old model
-            opp_input_old = opp_input.drop(columns=['uk_bpi_defense'])
-            return round(float(self.opp_model_v4.predict(opp_input_old)[0]), 1)
+        # Match features to whatever the model was trained with
+        model_features = self.opp_model_v4.get_booster().feature_names
+        opp_input = opp_input[[c for c in model_features if c in opp_input.columns]]
+        return round(float(self.opp_model_v4.predict(opp_input)[0]), 1)
 
     def _win_prob_logistic(self, projections, opp_score, is_home,
                             opp_pts_roll3, opp_fg_pct_roll3, uk_def_roll3):
