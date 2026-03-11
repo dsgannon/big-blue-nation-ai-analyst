@@ -59,65 +59,185 @@
           "mtime": "2026-03-10 23:38:55"
         }
       }
+    },
+    {
+      "trained_at": "2026-03-10 23:59:53",
+      "artifacts": {
+        "ast_model.joblib": {
+          "size_kb": 449.4,
+          "sha256_short": "7bac5e7bacfa",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "feature_meta_v2.json": {
+          "size_kb": 1.6,
+          "sha256_short": "ae5313858292",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "le_opponent.joblib": {
+          "size_kb": 1.3,
+          "sha256_short": "ca8a0df65655",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "le_player.joblib": {
+          "size_kb": 0.8,
+          "sha256_short": "c3deda608073",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "le_position.joblib": {
+          "size_kb": 0.5,
+          "sha256_short": "69c335658caa",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "minutes_model.joblib": {
+          "size_kb": 604.4,
+          "sha256_short": "12edeff87343",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "model_v3.joblib": {
+          "size_kb": 811.9,
+          "sha256_short": "ff5228cbf473",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "opp_model_v4.joblib": {
+          "size_kb": 320.5,
+          "sha256_short": "17b8664c432b",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "reb_model.joblib": {
+          "size_kb": 452.4,
+          "sha256_short": "880285821b8f",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "win_prob_model.joblib": {
+          "size_kb": 0.9,
+          "sha256_short": "4fea5197d63f",
+          "mtime": "2026-03-10 23:59:52"
+        },
+        "win_prob_scaler.joblib": {
+          "size_kb": 1.2,
+          "sha256_short": "f53d56f76042",
+          "mtime": "2026-03-10 23:59:52"
+        }
+      }
+    },
+    {
+      "trained_at": "2026-03-11 00:02:43",
+      "artifacts": {
+        "ast_model.joblib": {
+          "size_kb": 449.4,
+          "sha256_short": "7bac5e7bacfa",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "feature_meta_v2.json": {
+          "size_kb": 1.6,
+          "sha256_short": "ae5313858292",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "le_opponent.joblib": {
+          "size_kb": 1.3,
+          "sha256_short": "ca8a0df65655",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "le_player.joblib": {
+          "size_kb": 0.8,
+          "sha256_short": "c3deda608073",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "le_position.joblib": {
+          "size_kb": 0.5,
+          "sha256_short": "69c335658caa",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "minutes_model.joblib": {
+          "size_kb": 604.4,
+          "sha256_short": "12edeff87343",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "model_v3.joblib": {
+          "size_kb": 811.9,
+          "sha256_short": "ff5228cbf473",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "opp_model_v4.joblib": {
+          "size_kb": 35.9,
+          "sha256_short": "bc3c2c2fa845",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "reb_model.joblib": {
+          "size_kb": 452.4,
+          "sha256_short": "880285821b8f",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "win_prob_model.joblib": {
+          "size_kb": 0.9,
+          "sha256_short": "4fea5197d63f",
+          "mtime": "2026-03-11 00:02:42"
+        },
+        "win_prob_scaler.joblib": {
+          "size_kb": 1.2,
+          "sha256_short": "f53d56f76042",
+          "mtime": "2026-03-11 00:02:42"
+        }
+      }
     }
   ],
   "latest": {
-    "trained_at": "2026-03-10 23:38:55",
+    "trained_at": "2026-03-11 00:02:43",
     "artifacts": {
       "ast_model.joblib": {
-        "size_kb": 458.3,
-        "sha256_short": "cdf0eaf02e28",
-        "mtime": "2026-03-10 23:38:55"
+        "size_kb": 449.4,
+        "sha256_short": "7bac5e7bacfa",
+        "mtime": "2026-03-11 00:02:42"
       },
       "feature_meta_v2.json": {
-        "size_kb": 1.7,
-        "sha256_short": "91edd8b2f594",
-        "mtime": "2026-03-10 23:38:55"
+        "size_kb": 1.6,
+        "sha256_short": "ae5313858292",
+        "mtime": "2026-03-11 00:02:42"
       },
       "le_opponent.joblib": {
         "size_kb": 1.3,
         "sha256_short": "ca8a0df65655",
-        "mtime": "2026-03-10 23:38:55"
+        "mtime": "2026-03-11 00:02:42"
       },
       "le_player.joblib": {
         "size_kb": 0.8,
         "sha256_short": "c3deda608073",
-        "mtime": "2026-03-10 23:38:55"
+        "mtime": "2026-03-11 00:02:42"
       },
       "le_position.joblib": {
         "size_kb": 0.5,
         "sha256_short": "69c335658caa",
-        "mtime": "2026-03-10 23:38:55"
+        "mtime": "2026-03-11 00:02:42"
       },
       "minutes_model.joblib": {
-        "size_kb": 597.3,
-        "sha256_short": "6617ce631d28",
-        "mtime": "2026-03-10 23:38:55"
+        "size_kb": 604.4,
+        "sha256_short": "12edeff87343",
+        "mtime": "2026-03-11 00:02:42"
       },
       "model_v3.joblib": {
-        "size_kb": 810.9,
-        "sha256_short": "59f7ac508286",
-        "mtime": "2026-03-10 23:38:55"
+        "size_kb": 811.9,
+        "sha256_short": "ff5228cbf473",
+        "mtime": "2026-03-11 00:02:42"
       },
       "opp_model_v4.joblib": {
-        "size_kb": 320.5,
-        "sha256_short": "17b8664c432b",
-        "mtime": "2026-03-10 23:38:55"
+        "size_kb": 35.9,
+        "sha256_short": "bc3c2c2fa845",
+        "mtime": "2026-03-11 00:02:42"
       },
       "reb_model.joblib": {
-        "size_kb": 453.1,
-        "sha256_short": "add6ea08b5cd",
-        "mtime": "2026-03-10 23:38:55"
+        "size_kb": 452.4,
+        "sha256_short": "880285821b8f",
+        "mtime": "2026-03-11 00:02:42"
       },
       "win_prob_model.joblib": {
         "size_kb": 0.9,
         "sha256_short": "4fea5197d63f",
-        "mtime": "2026-03-10 23:38:55"
+        "mtime": "2026-03-11 00:02:42"
       },
       "win_prob_scaler.joblib": {
         "size_kb": 1.2,
         "sha256_short": "f53d56f76042",
-        "mtime": "2026-03-10 23:38:55"
+        "mtime": "2026-03-11 00:02:42"
       }
     }
   }

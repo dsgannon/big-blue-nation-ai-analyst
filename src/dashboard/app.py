@@ -745,7 +745,7 @@ with tab_models:
             st.info("SHAP plot not found. Run the notebook to generate it.")
 
     with col_val:
-        st.markdown('<div class="section-title">Model Accuracy — V2</div>',
+        st.markdown('<div class="section-title">Model Accuracy — V3</div>',
                 unsafe_allow_html=True)
 
         st.markdown("""
@@ -756,28 +756,28 @@ with tab_models:
         <tbody>
           <tr>
             <td>Player Points</td>
-            <td>4.05 pts</td><td>4.89 pts</td>
-            <td class="val-good">+0.84 pts</td>
+            <td>4.20 pts</td><td>4.89 pts</td>
+            <td class="val-good">+0.69 pts</td>
           </tr>
           <tr>
             <td>Player Rebounds</td>
-            <td>1.86 reb</td><td>2.02 reb</td>
-            <td class="val-good">+0.16 reb</td>
+            <td>1.72 reb</td><td>2.02 reb</td>
+            <td class="val-good">+0.30 reb</td>
           </tr>
           <tr>
             <td>Player Assists</td>
-            <td>1.22 ast</td><td>1.50 ast</td>
-            <td class="val-good">+0.28 ast</td>
+            <td>1.18 ast</td><td>1.50 ast</td>
+            <td class="val-good">+0.32 ast</td>
           </tr>
           <tr>
             <td>Player Minutes</td>
-            <td>5.06 min</td><td>7.86 min</td>
-            <td class="val-good">+2.80 min</td>
+            <td>4.83 min</td><td>7.86 min</td>
+            <td class="val-good">+3.03 min</td>
           </tr>
           <tr>
-            <td>Opponent Score</td>
-            <td>8.49 pts</td><td>10.85 pts</td>
-            <td class="val-good">+2.36 pts</td>
+            <td>Opponent Score (5-fold CV)</td>
+            <td>8.01 pts</td><td>9.07 pts</td>
+            <td class="val-good">+1.06 pts</td>
           </tr>
           <tr>
             <td>Win Probability</td>
@@ -787,7 +787,7 @@ with tab_models:
         </tbody>
         </table>
         <div style="font-size:0.72rem;color:#3a4a6a;margin-top:0.5rem">
-          V2: temporal decay · hot streak · logistic win prob · 567 records
+          V4: temporal decay · hot streak · usage rate · SOS · FT rate · pts/min · role stability · conf/neutral
         </div>
         """, unsafe_allow_html=True)
 
