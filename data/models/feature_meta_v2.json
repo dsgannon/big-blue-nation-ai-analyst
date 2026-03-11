@@ -20,6 +20,10 @@
     "role_stability",
     "cumulative_minutes_last3",
     "home_away_delta",
+    "uk_possessions_roll3",
+    "uk_off_eff_roll5",
+    "uk_def_eff_roll5",
+    "uk_team_3pt_roll3",
     "is_home",
     "neutral_site",
     "conf_game",
@@ -48,6 +52,7 @@
     "sos_roll5",
     "role_stability",
     "cumulative_minutes_last3",
+    "uk_possessions_roll3",
     "starter",
     "is_home",
     "game_number",
@@ -70,7 +75,8 @@
     "uk_def_roll5",
     "uk_def_season",
     "uk_bpi_defense",
-    "opp_bpi"
+    "opp_bpi",
+    "game_pace_roll3"
   ],
   "WIN_PROB_FEATURES": [
     "margin_bucket",

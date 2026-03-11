@@ -178,6 +178,7 @@ class PredictionEngine:
         self.uk_bpi_defense   = 7.5   # fallback; loaded from DB
         self._load_models()
         self._load_data()
+        self.game_stats_df = self._compute_game_stats()
 
     # ── Model loading ──────────────────────────────────────────────────────────
 
@@ -219,7 +220,7 @@ class PredictionEngine:
                 meta = json.load(f)
             self._feature_cols  = meta['FEATURE_COLS_V2']
             self._minutes_cols  = meta['MINUTES_FEATURES_V2']
-            self._feature_version = 'v5'
+            self._feature_version = 'v6'
         except Exception:
             # Fallback: detect from model feature names
             try:
@@ -274,6 +275,53 @@ class PredictionEngine:
               f"{len(self.opp_model_df)} opponent games")
         print(f"   UK BPI Defense: {self.uk_bpi_defense} | "
               f"Win prob model: {'V2 logistic' if self._win_prob_v2 else 'hybrid fallback'}")
+
+    # ── V6 game-level stats ────────────────────────────────────────────────────
+
+    def _compute_game_stats(self):
+        """Compute per-game UK totals for pace and efficiency features."""
+        if self.df_model is None or len(self.df_model) == 0:
+            return pd.DataFrame()
+        # df_model has per-player rows; we need to aggregate to game level
+        # Use columns that should exist in player_model_features
+        agg_cols = {}
+        for col in ['fg_att', 'off_rebounds', 'turnovers', 'ft_att', 'three_made', 'three_att']:
+            if col in self.df_model.columns:
+                agg_cols[col] = 'sum'
+        if not agg_cols:
+            return pd.DataFrame()
+
+        game_poss = self.df_model.groupby('game_id').agg(
+            **{f'uk_{k}': (k, v) for k, v in agg_cols.items()},
+            game_date=('game_date', 'first'),
+        ).reset_index()
+
+        # Possessions formula
+        fg  = game_poss.get('uk_fg_att',      pd.Series(0, index=game_poss.index))
+        orb = game_poss.get('uk_off_rebounds', pd.Series(0, index=game_poss.index))
+        tov = game_poss.get('uk_turnovers',    pd.Series(0, index=game_poss.index))
+        fta = game_poss.get('uk_ft_att',       pd.Series(0, index=game_poss.index))
+        game_poss['uk_possessions'] = (fg - orb + tov + 0.44 * fta).clip(lower=55)
+
+        # Team 3PT%
+        three_made = game_poss.get('uk_three_made', pd.Series(0, index=game_poss.index))
+        three_att  = game_poss.get('uk_three_att',  pd.Series(1, index=game_poss.index))
+        game_poss['uk_team_3pt'] = three_made / three_att.clip(lower=1)
+
+        # UK score from summed points; opp score from opp_model_df
+        uk_scores = self.df_model.groupby('game_id')['points'].sum().reset_index().rename(columns={'points': 'uk_score'})
+        game_poss = game_poss.merge(uk_scores, on='game_id', how='left')
+
+        if hasattr(self, 'opp_model_df') and len(self.opp_model_df) > 0:
+            opp_scores = self.opp_model_df[['game_id', 'opp_team_points']].copy()
+            game_poss = game_poss.merge(opp_scores, on='game_id', how='left')
+            game_poss['uk_off_eff'] = (game_poss['uk_score'] / game_poss['uk_possessions'] * 100).clip(60, 140)
+            game_poss['uk_def_eff'] = (game_poss['opp_team_points'] / game_poss['uk_possessions'] * 100).clip(60, 140)
+        else:
+            game_poss['uk_off_eff'] = 105.0
+            game_poss['uk_def_eff'] = 95.0
+
+        return game_poss.sort_values('game_date')
 
     # ── Decay feature helpers ──────────────────────────────────────────────────
 
@@ -561,6 +609,19 @@ class PredictionEngine:
         }
         row['conf_game'] = int(opponent in SEC_TEAMS)
 
+        # ── V6: pace, efficiency, team 3PT% ───────────────────────────────────
+        if hasattr(self, 'game_stats_df') and len(self.game_stats_df) > 0:
+            gs = self.game_stats_df.tail(5)
+            row['uk_possessions_roll3'] = float(gs['uk_possessions'].tail(3).mean()) if len(gs) >= 1 else 70.0
+            row['uk_off_eff_roll5']     = float(gs['uk_off_eff'].mean())              if len(gs) >= 1 else 105.0
+            row['uk_def_eff_roll5']     = float(gs['uk_def_eff'].mean())              if len(gs) >= 1 else 95.0
+            row['uk_team_3pt_roll3']    = float(gs['uk_team_3pt'].tail(3).mean())    if len(gs) >= 1 else 0.33
+        else:
+            row['uk_possessions_roll3'] = 70.0
+            row['uk_off_eff_roll5']     = 105.0
+            row['uk_def_eff_roll5']     = 95.0
+            row['uk_team_3pt_roll3']    = 0.33
+
         # steals_roll3: already in player_model_features if refreshed; fallback
         if 'steals_roll3' not in row or pd.isna(row.get('steals_roll3')):
             row['steals_roll3'] = float(recent3['steals'].mean()) if 'steals' in recent3.columns else 0.5
@@ -666,6 +727,7 @@ class PredictionEngine:
             'uk_def_season':       uk_def_season,
             'uk_bpi_defense':      uk_bpi_defense,
             'opp_bpi':             float(opp_bpi) if opp_bpi is not None else 10.0,
+            'game_pace_roll3':     float(self.game_stats_df['uk_possessions'].tail(3).mean()) if hasattr(self, 'game_stats_df') and len(self.game_stats_df) >= 1 else 70.0,
         }])
 
         # Match features to whatever the model was trained with
