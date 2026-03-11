@@ -785,8 +785,8 @@ with tab_models:
             <td class="val-good">+1.06 pts</td>
           </tr>
           <tr>
-            <td>Win Probability (6 seasons)</td>
-            <td>92.4%</td><td>—</td>
+            <td>Win Probability (Pope era)</td>
+            <td>76.0%</td><td>—</td>
             <td class="val-good">CV Accuracy</td>
           </tr>
         </tbody>
