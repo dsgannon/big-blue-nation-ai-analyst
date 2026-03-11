@@ -14,15 +14,21 @@ from ingestion.espn_client import (
     get_team_metrics,
     get_record_splits,
     get_next_game,
+    get_all_sec_bpi,
 )
+from ingestion.boxscore_client import get_game_boxscore
 from ingestion.database import (
     create_tables,
+    get_connection,
     save_players,
     save_games,
     save_rankings,
     save_sec_standings,
     save_metrics,
     save_record_splits,
+    save_player_game_stats,
+    save_opponent_stats,
+    save_opponent_bpi_history,
 )
 
 # Set up logging so we have a record of every refresh
@@ -35,6 +41,59 @@ logging.basicConfig(
     ]
 )
 log = logging.getLogger(__name__)
+
+CURRENT_SEASON = "2025-26"
+
+
+def _refresh_box_scores(schedule, season=CURRENT_SEASON):
+    """Incrementally fetch box scores for completed games not yet in the DB."""
+    conn = get_connection()
+    already_done = {
+        row[0] for row in
+        conn.execute("SELECT DISTINCT game_id FROM player_game_stats").fetchall()
+    }
+    conn.close()
+
+    completed = [g for g in schedule if g.get('status') in ('Final', 'STATUS_FINAL')]
+    new_games  = [g for g in completed if g['id'] not in already_done]
+
+    log.info(f"Box scores: {len(completed)} completed, {len(new_games)} new")
+
+    saved = 0
+    for game in new_games:
+        try:
+            result = get_game_boxscore(game['id'], game['date'][:10], season)
+            if not result:
+                continue
+            player_stats, opp_totals, _ = result
+            opp_name = (
+                game.get('away_team')
+                if game.get('home_team') == 'Kentucky Wildcats'
+                else game.get('home_team')
+            )
+            opp_totals['game_id']   = game['id']
+            opp_totals['game_date'] = game['date'][:10]
+            opp_totals['opponent']  = opp_name
+            save_player_game_stats(player_stats, season)
+            save_opponent_stats([opp_totals], season)
+            log.info(f"  ✅ Box score: {game['name'][:55]}")
+            saved += 1
+        except Exception as e:
+            log.warning(f"  ⚠️  Box score failed: {game['name'][:45]} — {e}")
+
+    if saved:
+        log.info(f"Saved {saved} new box score(s)")
+    return saved
+
+
+def _refresh_opponent_bpi():
+    """Snapshot current BPI for all SEC teams into opponent_bpi_history."""
+    entries = get_all_sec_bpi()
+    if entries:
+        save_opponent_bpi_history(entries)
+        log.info(f"Opponent BPI: saved {len(entries)} entries")
+    return entries
+
 
 def run_refresh():
     """Full data refresh — fetches everything from ESPN and saves to database"""
@@ -90,6 +149,14 @@ def run_refresh():
         save_sec_standings(standings)
         save_metrics(metrics)
         save_record_splits(splits)
+
+        # Box scores — incremental (only new completed games)
+        log.info("Refreshing box scores...")
+        _refresh_box_scores(schedule)
+
+        # Opponent BPI snapshots
+        log.info("Refreshing opponent BPI history...")
+        _refresh_opponent_bpi()
 
         # Summary
         elapsed = (datetime.now() - start).seconds

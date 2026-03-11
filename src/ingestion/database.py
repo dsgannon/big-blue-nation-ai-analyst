@@ -202,6 +202,18 @@ def create_tables():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS opponent_bpi_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season TEXT,
+            date TEXT,
+            team_id TEXT,
+            team_name TEXT,
+            bpi REAL,
+            updated_at TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
     print("✅ Tables created successfully")
@@ -397,6 +409,29 @@ def save_player_game_stats(player_stats, season=CURRENT_SEASON):
     conn.commit()
     conn.close()
     print(f"✅ Saved {len(player_stats)} player game stats to database")
+
+def save_opponent_bpi_history(entries, season=CURRENT_SEASON):
+    """Save opponent BPI snapshots to history table."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    today = now[:10]
+
+    for entry in entries:
+        cursor.execute("""
+            INSERT INTO opponent_bpi_history
+                (season, date, team_id, team_name, bpi, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            season, today,
+            entry.get('team_id'), entry.get('team_name'),
+            entry.get('bpi'), now,
+        ))
+
+    conn.commit()
+    conn.close()
+    print(f"✅ Saved {len(entries)} opponent BPI entries")
+
 
 def save_opponent_stats(opp_stats_list, season=CURRENT_SEASON):
     """Save opponent team totals to database"""

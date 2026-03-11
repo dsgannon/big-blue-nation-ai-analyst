@@ -232,6 +232,47 @@ def load_opponents():
     return df['team'].tolist()
 
 
+@st.cache_data(ttl=1800)
+def load_uk_record():
+    """Load Kentucky's current record and streak from the DB."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql("""
+            SELECT overall_record, wins, losses, streak
+            FROM sec_standings WHERE team_id='96'
+            ORDER BY updated_at DESC LIMIT 1
+        """, conn)
+        conn.close()
+        if len(df) == 0:
+            return None
+        row = df.iloc[0]
+        streak_val = int(float(row['streak'])) if row['streak'] is not None else 0
+        if streak_val > 0:
+            streak_str = f"W{streak_val}"
+            streak_color = "#4caf7d"
+            streak_bg    = "#0a2a10"
+            streak_border= "#1e4a2a"
+        elif streak_val < 0:
+            streak_str = f"L{abs(streak_val)}"
+            streak_color = "#e05c5c"
+            streak_bg    = "#2a0a0a"
+            streak_border= "#4a1e1e"
+        else:
+            streak_str   = "—"
+            streak_color = "#5a7aa8"
+            streak_bg    = "#111827"
+            streak_border= "#1e2a4a"
+        return {
+            'record':       row['overall_record'],
+            'streak':       streak_str,
+            'streak_color': streak_color,
+            'streak_bg':    streak_bg,
+            'streak_border':streak_border,
+        }
+    except Exception:
+        return None
+
+
 @st.cache_data
 def load_validation_data():
     """Load past game predictions vs actuals if available."""
@@ -351,19 +392,39 @@ with st.sidebar:
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
-st.markdown("""
+uk_rec = load_uk_record()
+if uk_rec:
+    record_html = f"""
+    <div style="display:flex;gap:0.6rem;margin-top:0.5rem;align-items:center">
+      <span style="background:#0a1a30;border:1px solid #1e3a6a;border-radius:4px;
+                   padding:0.15rem 0.55rem;font-family:'Barlow Condensed',sans-serif;
+                   font-size:1rem;color:#e0e8f0;font-weight:700;letter-spacing:0.04em">
+        {uk_rec['record']}
+      </span>
+      <span style="background:{uk_rec['streak_bg']};border:1px solid {uk_rec['streak_border']};
+                   border-radius:4px;padding:0.15rem 0.55rem;
+                   font-family:'Barlow Condensed',sans-serif;font-size:1rem;
+                   color:{uk_rec['streak_color']};font-weight:700;letter-spacing:0.04em">
+        {uk_rec['streak']}
+      </span>
+    </div>"""
+else:
+    record_html = ""
+
+st.markdown(f"""
 <div class="bbn-header">
   <div>
     <h1>🏀 Big Blue Nation</h1>
     <div class="subtitle">AI Game Analyst · Kentucky Wildcats Basketball</div>
+    {record_html}
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 
 # ── Main content ───────────────────────────────────────────────────────────────
-tab_game, tab_players, tab_models = st.tabs(
-    ["🏀 Game Predictions", "👥 Player Predictions", "📊 Model Insights"]
+tab_game, tab_players, tab_sim, tab_models = st.tabs(
+    ["🏀 Game Predictions", "👥 Player Predictions", "🎲 Simulation", "📊 Model Insights"]
 )
 if 'result' not in st.session_state:
     st.session_state.result = None
@@ -372,7 +433,7 @@ if run_btn or st.session_state.result is None:
     with st.spinner("Running prediction models..."):
         try:
             engine = load_engine()
-            result = engine.predict_game(
+            result = engine.predict_game_with_ci(
                 opponent        = opponent,
                 is_home         = int(is_home),
                 net_rank        = net_rank,
@@ -496,53 +557,42 @@ with tab_players:
         return '🔴', must_do
 
 
+    def _fmt_ci(val, lo, hi):
+        return f"{val:.1f}  ({lo:.1f}–{hi:.1f})"
+
     def build_df(players):
         rows = []
         for p in players:
             dot, must_do = get_status_emoji(p['name'], p['points'], p['rebounds'], p['assists'])
+            has_ci = 'points_lo' in p
             rows.append({
                 'Status': dot,
                 'Player': p['name'],
-                'PTS':    p['points'],
-                'REB':    p['rebounds'],
-                'AST':    p['assists'],
-                'MIN':    p['minutes'],
+                'PTS': _fmt_ci(p['points'], p['points_lo'], p['points_hi']) if has_ci else f"{p['points']:.1f}",
+                'REB': _fmt_ci(p['rebounds'], p['rebounds_lo'], p['rebounds_hi']) if has_ci else f"{p['rebounds']:.1f}",
+                'AST': _fmt_ci(p['assists'], p['assists_lo'], p['assists_hi']) if has_ci else f"{p['assists']:.1f}",
+                'MIN': f"{p['minutes']:.1f}",
                 'Must Do': must_do,
             })
         return pd.DataFrame(rows)
 
+    col_cfg = {
+        'Status': st.column_config.TextColumn(width='small'),
+        'Player': st.column_config.TextColumn(width='medium'),
+        'PTS':    st.column_config.TextColumn(width='medium'),
+        'REB':    st.column_config.TextColumn(width='medium'),
+        'AST':    st.column_config.TextColumn(width='medium'),
+        'MIN':    st.column_config.TextColumn(width='small'),
+        'Must Do':st.column_config.TextColumn(width='large'),
+    }
 
-    st.caption("STARTERS")
-    st.dataframe(
-        build_df(starters),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            'Status': st.column_config.TextColumn(width='small'),
-            'Player': st.column_config.TextColumn(width='medium'),
-            'PTS':    st.column_config.NumberColumn(format="%.1f", width='small'),
-            'REB':    st.column_config.NumberColumn(format="%.1f", width='small'),
-            'AST':    st.column_config.NumberColumn(format="%.1f", width='small'),
-            'MIN':    st.column_config.NumberColumn(format="%.1f", width='small'),
-            'Must Do':st.column_config.TextColumn(width='large'),
-        }
-    )
+    st.caption("STARTERS  ·  80% prediction interval shown in parentheses")
+    st.dataframe(build_df(starters), use_container_width=True,
+                 hide_index=True, column_config=col_cfg)
 
     st.caption("BENCH")
-    st.dataframe(
-        build_df(bench),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            'Status': st.column_config.TextColumn(width='small'),
-            'Player': st.column_config.TextColumn(width='medium'),
-            'PTS':    st.column_config.NumberColumn(format="%.1f", width='small'),
-            'REB':    st.column_config.NumberColumn(format="%.1f", width='small'),
-            'AST':    st.column_config.NumberColumn(format="%.1f", width='small'),
-            'MIN':    st.column_config.NumberColumn(format="%.1f", width='small'),
-            'Must Do':st.column_config.TextColumn(width='large'),
-        }
-    )
+    st.dataframe(build_df(bench), use_container_width=True,
+                 hide_index=True, column_config=col_cfg)
 
     # Team totals
     tot_pts = sum(p['points']   for p in result['projections'])
@@ -555,6 +605,130 @@ with tab_players:
     col2.metric("Team Rebounds", f"{tot_reb:.1f}")
     col3.metric("Team Assists",  f"{tot_ast:.1f}")
     col4.metric("Team Minutes",  f"{tot_min:.0f}")
+
+
+# ── Win Probability Simulator ──────────────────────────────────────────────────
+with tab_sim:
+    st.markdown('<div class="section-title">Win Probability Simulator</div>',
+                unsafe_allow_html=True)
+    st.caption(
+        "Slide opponent BPI to explore how win probability shifts. "
+        "Uses the simplified BPI model so the chart updates instantly."
+    )
+
+    sim_engine = load_engine()
+    uk_score   = result['uk_score']
+    opp_score  = result['opp_score']
+
+    col_slider, col_gauge = st.columns([1.2, 1])
+
+    with col_slider:
+        sim_bpi = st.slider(
+            "Opponent BPI", min_value=0.0, max_value=35.0,
+            value=float(opp_bpi), step=0.5,
+            help="Higher BPI = stronger opponent"
+        )
+
+        # Compute win prob curve across full BPI range
+        bpi_range = [round(i * 0.5, 1) for i in range(71)]  # 0 → 35
+        probs = [
+            sim_engine._win_prob_hybrid(
+                uk_score, opp_score, b, is_home, result['injuries']
+            ) * 100
+            for b in bpi_range
+        ]
+
+        # Find break-even BPI (where win prob crosses 50%)
+        breakeven = None
+        for i in range(len(probs) - 1):
+            if (probs[i] >= 50) != (probs[i + 1] >= 50):
+                breakeven = bpi_range[i]
+                break
+
+        sim_win_prob = sim_engine._win_prob_hybrid(
+            uk_score, opp_score, sim_bpi, is_home, result['injuries']
+        ) * 100
+
+        fig_curve = go.Figure()
+        fig_curve.add_trace(go.Scatter(
+            x=bpi_range, y=probs,
+            mode='lines',
+            line=dict(color='#4a90d9', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(74,144,217,0.08)',
+            name='Win Prob',
+            hovertemplate='BPI %{x:.1f} → %{y:.1f}%<extra></extra>',
+        ))
+        # 50% reference line
+        fig_curve.add_hline(y=50, line=dict(color='#3a4a6a', width=1, dash='dash'))
+        # Selected BPI marker
+        fig_curve.add_vline(x=sim_bpi, line=dict(color='#ffffff', width=1, dash='dot'))
+        fig_curve.add_trace(go.Scatter(
+            x=[sim_bpi], y=[sim_win_prob],
+            mode='markers',
+            marker=dict(color='#ffffff', size=10, symbol='circle'),
+            showlegend=False,
+            hovertemplate=f'BPI {sim_bpi:.1f} → {sim_win_prob:.1f}%<extra></extra>',
+        ))
+        fig_curve.update_layout(
+            height=260,
+            margin=dict(t=20, b=40, l=50, r=20),
+            paper_bgcolor='#111827',
+            plot_bgcolor='#111827',
+            font_color='#5a7aa8',
+            xaxis=dict(title='Opponent BPI', gridcolor='#1e2a4a', range=[0, 35]),
+            yaxis=dict(title='UK Win %', gridcolor='#1e2a4a', range=[0, 100]),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_curve, use_container_width=True,
+                        config={'displayModeBar': False})
+
+        if breakeven is not None:
+            st.caption(f"Break-even: opponent BPI ≈ **{breakeven}** (50% win probability)")
+
+    with col_gauge:
+        wp_color  = "#4a90d9" if sim_win_prob >= 50 else "#e05c5c"
+        fig_gauge = go.Figure(go.Indicator(
+            mode  = "gauge+number",
+            value = sim_win_prob,
+            number= {'suffix': '%', 'font': {'size': 36, 'color': '#ffffff',
+                                              'family': 'Barlow Condensed'}},
+            title = {'text': f"UK Win Prob @ BPI {sim_bpi:.1f}",
+                     'font': {'size': 12, 'color': '#5a7aa8', 'family': 'Barlow'}},
+            gauge = {
+                'axis': {'range': [0, 100], 'tickcolor': '#3a4a6a',
+                         'tickfont': {'color': '#3a4a6a', 'size': 10}},
+                'bar':  {'color': wp_color, 'thickness': 0.25},
+                'bgcolor': '#111827',
+                'bordercolor': '#1e2a4a',
+                'steps': [
+                    {'range': [0,  40], 'color': '#1a0a0a'},
+                    {'range': [40, 60], 'color': '#1a1a0a'},
+                    {'range': [60, 100],'color': '#0a1a0a'},
+                ],
+                'threshold': {
+                    'line': {'color': '#4a90d9', 'width': 2},
+                    'thickness': 0.8, 'value': 50,
+                }
+            }
+        ))
+        fig_gauge.update_layout(
+            height=240, margin=dict(t=50, b=10, l=20, r=20),
+            paper_bgcolor='#111827', font_color='#ffffff',
+        )
+        st.plotly_chart(fig_gauge, use_container_width=True,
+                        config={'displayModeBar': False})
+
+        # Quick comparison table
+        st.markdown(f"""
+        <table class="val-table" style="margin-top:0.5rem">
+          <tr><th>Scenario</th><th>Opp BPI</th><th>UK Win %</th></tr>
+          <tr><td>Current inputs</td><td>{opp_bpi:.1f}</td>
+              <td>{result['win_probability']:.1f}%</td></tr>
+          <tr><td>Simulated</td><td>{sim_bpi:.1f}</td>
+              <td class="{'val-good' if sim_win_prob>=50 else 'val-bad'}">{sim_win_prob:.1f}%</td></tr>
+        </table>
+        """, unsafe_allow_html=True)
 
 
 # ── SHAP Plot + Model Accuracy ─────────────────────────────────────────────────

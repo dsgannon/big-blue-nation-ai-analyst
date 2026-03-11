@@ -453,6 +453,31 @@ def get_opponent_bpi(opponent_name):
         return 10.0
     return 10.0
 
+
+def get_all_sec_bpi():
+    """
+    Fetch current BPI for all SEC teams.
+    Returns list of dicts: {team_id, team_name, bpi}
+    """
+    results = []
+    for team_id, team_name in SEC_TEAMS.items():
+        try:
+            url = (
+                f"https://sports.core.api.espn.com/v2/sports/basketball/leagues/"
+                f"mens-college-basketball/seasons/2026/powerindex/{team_id}"
+            )
+            data = requests.get(url, timeout=10).json()
+            bpi = None
+            for stat in data.get('stats', []):
+                if stat.get('name') == 'bpi':
+                    bpi = float(stat.get('displayValue', 0))
+                    break
+            if bpi is not None:
+                results.append({'team_id': team_id, 'team_name': team_name, 'bpi': bpi})
+        except Exception as e:
+            print(f"  ⚠️ BPI fetch failed for {team_name}: {e}")
+    return results
+
 #######################################
 #######################################
 # Test it
