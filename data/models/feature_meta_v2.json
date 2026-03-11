@@ -69,7 +69,8 @@
     "uk_def_roll3",
     "uk_def_roll5",
     "uk_def_season",
-    "uk_bpi_defense"
+    "uk_bpi_defense",
+    "opp_bpi"
   ],
   "WIN_PROB_FEATURES": [
     "margin_bucket",

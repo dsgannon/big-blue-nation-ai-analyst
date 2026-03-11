@@ -214,6 +214,17 @@ def create_tables():
         )
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS net_rankings_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season TEXT,
+            date TEXT,
+            team_name TEXT,
+            net_rank INTEGER,
+            updated_at TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
     print("✅ Tables created successfully")
@@ -431,6 +442,24 @@ def save_opponent_bpi_history(entries, season=CURRENT_SEASON):
     conn.commit()
     conn.close()
     print(f"✅ Saved {len(entries)} opponent BPI entries")
+
+
+def save_net_rankings_history(net_rankings: dict, season=CURRENT_SEASON):
+    """Snapshot all teams' NET rankings into net_rankings_history."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    today = now[:10]
+
+    for team_name, net_rank in net_rankings.items():
+        cursor.execute("""
+            INSERT INTO net_rankings_history (season, date, team_name, net_rank, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (season, today, team_name, int(net_rank), now))
+
+    conn.commit()
+    conn.close()
+    print(f"✅ Saved {len(net_rankings)} NET rankings to history")
 
 
 def save_opponent_stats(opp_stats_list, season=CURRENT_SEASON):

@@ -451,7 +451,8 @@ class PredictionEngine:
         adjusted_bpi_defense = self.uk_bpi_defense + injury_bpi_penalty
         opp_score = self.predict_opponent_score(
             opponent, is_home, net_rank,
-            uk_bpi_defense=adjusted_bpi_defense
+            uk_bpi_defense=adjusted_bpi_defense,
+            opp_bpi=opp_bpi,
         )
 
         opp_games = self.opp_model_df[
@@ -612,11 +613,12 @@ class PredictionEngine:
         }
 
     def predict_opponent_score(self, opponent, is_home, net_rank,
-                                uk_bpi_defense=None):
+                                uk_bpi_defense=None, opp_bpi=None):
         """
         Predict opponent score. V2 adds uk_bpi_defense so the model
         reacts to Kentucky's current defensive strength (and implicitly
         to injuries — weaker defense = higher BPI defense number = more pts allowed).
+        opp_bpi is the opponent's current BPI (offensive strength).
         """
         if uk_bpi_defense is None:
             uk_bpi_defense = self.uk_bpi_defense
@@ -663,6 +665,7 @@ class PredictionEngine:
             'uk_def_roll5':        uk_def_roll5,
             'uk_def_season':       uk_def_season,
             'uk_bpi_defense':      uk_bpi_defense,
+            'opp_bpi':             float(opp_bpi) if opp_bpi is not None else 10.0,
         }])
 
         # Match features to whatever the model was trained with
@@ -744,7 +747,8 @@ class PredictionEngine:
         adjusted_bpi_defense = self.uk_bpi_defense + injury_bpi_penalty
         opp_score = self.predict_opponent_score(
             opponent, is_home, net_rank,
-            uk_bpi_defense=adjusted_bpi_defense
+            uk_bpi_defense=adjusted_bpi_defense,
+            opp_bpi=opp_bpi,
         )
 
         # ── Win probability ────────────────────────────────────────────────────

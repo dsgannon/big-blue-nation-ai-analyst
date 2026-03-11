@@ -15,6 +15,7 @@ from ingestion.espn_client import (
     get_record_splits,
     get_next_game,
     get_all_sec_bpi,
+    get_net_rankings,
 )
 from ingestion.boxscore_client import get_game_boxscore
 from models.thresholds import compute_thresholds
@@ -30,6 +31,7 @@ from ingestion.database import (
     save_player_game_stats,
     save_opponent_stats,
     save_opponent_bpi_history,
+    save_net_rankings_history,
 )
 
 # Set up logging so we have a record of every refresh
@@ -96,6 +98,15 @@ def _refresh_opponent_bpi():
     return entries
 
 
+def _refresh_net_rankings():
+    """Snapshot current NET rankings for all teams into net_rankings_history."""
+    net_rankings = get_net_rankings()
+    if net_rankings:
+        save_net_rankings_history(net_rankings)
+        log.info(f"NET rankings: saved {len(net_rankings)} team entries")
+    return net_rankings
+
+
 def run_refresh():
     """Full data refresh — fetches everything from ESPN and saves to database"""
     start = datetime.now()
@@ -158,6 +169,10 @@ def run_refresh():
         # Opponent BPI snapshots
         log.info("Refreshing opponent BPI history...")
         _refresh_opponent_bpi()
+
+        # NET rankings snapshot
+        log.info("Refreshing NET rankings history...")
+        _refresh_net_rankings()
 
         # Recompute thresholds with latest game data
         log.info("Recomputing player thresholds...")

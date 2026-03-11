@@ -54,7 +54,6 @@ from src.ingestion.espn_client import get_next_game
 from src.ingestion.database import DB_PATH
 from src.models.prediction_engine import PredictionEngine
 from src.models.validation import save_prediction
-import sqlite3, json
 
 # Get next game info
 next_game = get_next_game()
@@ -68,17 +67,22 @@ neutral   = next_game.get('neutral_site', False)
 game_date = next_game.get('date', 'TBD')
 game_id   = next_game.get('id', '')
 
-# Get NET rank from DB
-conn = sqlite3.connect(DB_PATH)
+# Get live NET rank and BPI for opponent
+from src.ingestion.espn_client import get_net_rankings, get_opponent_net_rank, get_opponent_bpi
 try:
-    row = conn.execute(
-        "SELECT net_rank FROM rankings WHERE team_name LIKE ? ORDER BY date DESC LIMIT 1",
-        (f"%{opponent.split()[0]}%",)
-    ).fetchone()
-    net_rank = int(row[0]) if row else 100
-except Exception:
+    net_rankings = get_net_rankings()
+    net_rank = get_opponent_net_rank(opponent, net_rankings)
+    print(f"  NET Rank:  #{net_rank} (live)")
+except Exception as e:
     net_rank = 100
-conn.close()
+    print(f"  NET Rank:  #100 (fallback — {e})")
+
+opp_bpi = None
+try:
+    opp_bpi = get_opponent_bpi(opponent)
+    print(f"  Opp BPI:   {opp_bpi:.1f} (live)")
+except Exception as e:
+    print(f"  Opp BPI:   N/A (fallback — {e})")
 
 injuries = [i.strip() for i in """${INJURIES}""".split(',') if i.strip()]
 
@@ -86,18 +90,20 @@ print(f"  Opponent:  {opponent}")
 print(f"  Date:      {game_date}")
 location = 'Neutral' if neutral else ('Home' if is_home else 'Away')
 print(f"  Location:  {location} — {next_game.get('venue_name','')}")
-print(f"  NET Rank:  #{net_rank}")
 if injuries:
     print(f"  Injuries:  {', '.join(injuries)}")
 print()
 
 engine = PredictionEngine()
-prediction = engine.predict_game(
+predict_kwargs = dict(
     opponent  = opponent,
     is_home   = is_home,
     net_rank  = net_rank,
     injuries  = injuries,
 )
+if opp_bpi is not None:
+    predict_kwargs['opp_bpi'] = float(opp_bpi)
+prediction = engine.predict_game(**predict_kwargs)
 
 save_prediction(game_id, prediction)
 
