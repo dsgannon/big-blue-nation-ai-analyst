@@ -680,8 +680,10 @@ class PredictionEngine:
         uk_pts   = sum(p['points'] for p in projections)
         pts_diff = uk_pts - opp_score
 
-        features = [[pts_diff, int(is_home), int(neutral_site)]]
-
+        features = pd.DataFrame(
+            [[pts_diff, int(is_home), int(neutral_site)]],
+            columns=['margin_bucket', 'uk_is_home', 'neutral_site']
+        )
         X_scaled = self.win_prob_scaler.transform(features)
         prob = float(self.win_prob_model.predict_proba(X_scaled)[0][1])
         return round(prob, 3)
