@@ -197,10 +197,18 @@ def create_tables():
             rebounds INTEGER,
             assists INTEGER,
             turnovers INTEGER,
+            ft_att INTEGER,
+            off_rebounds INTEGER,
             updated_at TEXT,
             UNIQUE(game_id)
         )
     """)
+    # Migration: add new columns to existing DBs
+    for _col, _type in [('ft_att', 'INTEGER'), ('off_rebounds', 'INTEGER')]:
+        try:
+            cursor.execute(f"ALTER TABLE opponent_game_stats ADD COLUMN {_col} {_type}")
+        except Exception:
+            pass  # column already exists
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS opponent_bpi_history (
@@ -474,13 +482,14 @@ def save_opponent_stats(opp_stats_list, season=CURRENT_SEASON):
         cursor.execute("""
             INSERT OR REPLACE INTO opponent_game_stats
             (game_id, game_date, season, opponent, points, rebounds,
-             assists, turnovers, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?)
+             assists, turnovers, ft_att, off_rebounds, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """, (
             opp.get("game_id"), opp.get("game_date", ""),
             season, opp.get("opponent"),
             opp.get("points", 0), opp.get("rebounds", 0),
             opp.get("assists", 0), opp.get("turnovers", 0),
+            opp.get("ft_att", 0), opp.get("off_rebounds", 0),
             now
         ))
 

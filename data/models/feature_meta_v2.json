@@ -24,6 +24,8 @@
     "uk_off_eff_roll5",
     "uk_def_eff_roll5",
     "uk_team_3pt_roll3",
+    "uk_fg_pct_vs_opp_hist",
+    "uk_three_pct_vs_opp_hist",
     "is_home",
     "neutral_site",
     "conf_game",

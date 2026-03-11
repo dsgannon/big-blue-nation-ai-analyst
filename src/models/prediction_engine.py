@@ -622,6 +622,15 @@ class PredictionEngine:
             row['uk_def_eff_roll5']     = 95.0
             row['uk_team_3pt_roll3']    = 0.33
 
+        # ── V7: opponent defensive matchup quality ─────────────────────────────
+        opp_hist = self.df_model[self.df_model['opponent'] == opponent]
+        if len(opp_hist) > 0 and 'uk_fg_pct_vs_opp_hist' in opp_hist.columns:
+            row['uk_fg_pct_vs_opp_hist']    = float(opp_hist['uk_fg_pct_vs_opp_hist'].iloc[0])
+            row['uk_three_pct_vs_opp_hist'] = float(opp_hist['uk_three_pct_vs_opp_hist'].iloc[0])
+        else:
+            row['uk_fg_pct_vs_opp_hist']    = float(self.df_model['uk_fg_pct_vs_opp_hist'].mean()) if 'uk_fg_pct_vs_opp_hist' in self.df_model.columns else 0.45
+            row['uk_three_pct_vs_opp_hist'] = float(self.df_model['uk_three_pct_vs_opp_hist'].mean()) if 'uk_three_pct_vs_opp_hist' in self.df_model.columns else 0.33
+
         # steals_roll3: already in player_model_features if refreshed; fallback
         if 'steals_roll3' not in row or pd.isna(row.get('steals_roll3')):
             row['steals_roll3'] = float(recent3['steals'].mean()) if 'steals' in recent3.columns else 0.5

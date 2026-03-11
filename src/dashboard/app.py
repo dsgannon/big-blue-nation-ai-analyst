@@ -19,6 +19,20 @@ from src.models.prediction_engine import PredictionEngine, CURRENT_ROSTER
 
 DB_PATH    = os.path.join(BASE_DIR, 'data', 'processed', 'kentucky_basketball.db')
 SHAP_PATH  = os.path.join(BASE_DIR, 'notebooks', 'shap_summary_v4.png')
+
+# ── ESPN logo helper ───────────────────────────────────────────────────────────
+def get_espn_logo_url(team_name: str) -> str | None:
+    """Return ESPN CDN logo URL for a team, or None if unknown."""
+    try:
+        from src.ingestion.espn_client import ESPN_TEAM_IDS
+        team_id = ESPN_TEAM_IDS.get(team_name)
+        if team_id:
+            return f"https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/{team_id}.png&w=80&h=80"
+    except Exception:
+        pass
+    return None
+
+UK_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/96.png&w=80&h=80"
 MODELS_DIR = os.path.join(BASE_DIR, 'data', 'models')
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -308,8 +322,13 @@ def load_net_rankings():
     from src.ingestion.espn_client import get_net_rankings
     return get_net_rankings()
 
-next_game = load_next_game()
+next_game    = load_next_game()
 net_rankings = load_net_rankings()
+
+# ── Game Day detection ─────────────────────────────────────────────────────────
+from datetime import date as _date
+_today = _date.today().isoformat()
+_game_today = next_game and next_game.get('date', '')[:10] == _today
 
 with st.sidebar:
     st.markdown('<div class="sidebar-title">🏀 Game Setup</div>', unsafe_allow_html=True)
@@ -337,17 +356,23 @@ with st.sidebar:
         except Exception:
             game_str = auto_date
 
-        venue_icon = '🏟️' if auto_neutral else ('🏠' if auto_is_home else '✈️')
+        venue_icon  = '🏟️' if auto_neutral else ('🏠' if auto_is_home else '✈️')
+        opp_logo    = get_espn_logo_url(auto_opponent)
+        logo_html   = f'<img src="{opp_logo}" style="width:36px;height:36px;object-fit:contain;margin-right:0.5rem">' if opp_logo else ''
+        today_badge = '<span style="background:#0033A0;color:#fff;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;padding:0.1rem 0.4rem;border-radius:3px;margin-left:0.4rem">TODAY</span>' if _game_today else ''
         st.markdown(f"""
-        <div style="background:#0d1f3c;border:1px solid #1e2a4a;border-radius:6px;
+        <div style="background:#0d1f3c;border:1px solid {'#0033A0' if _game_today else '#1e2a4a'};border-radius:6px;
                     padding:0.8rem 1rem;margin-bottom:1rem">
         <div style="font-family:'Barlow Condensed';font-size:0.7rem;letter-spacing:0.12em;
-                    text-transform:uppercase;color:#4a90d9">Next Game</div>
-        <div style="font-weight:600;color:#fff;margin-top:0.2rem">
-            {venue_icon} vs {auto_opponent}
+                    text-transform:uppercase;color:#4a90d9">Next Game{today_badge}</div>
+        <div style="display:flex;align-items:center;margin-top:0.4rem">
+            {logo_html}
+            <div>
+                <div style="font-weight:600;color:#fff">{venue_icon} vs {auto_opponent}</div>
+                <div style="font-size:0.75rem;color:#5a7aa8;margin-top:0.1rem">{game_str}</div>
+                <div style="font-size:0.75rem;color:#5a7aa8">{auto_venue}</div>
+            </div>
         </div>
-        <div style="font-size:0.75rem;color:#5a7aa8;margin-top:0.1rem">{game_str}</div>
-        <div style="font-size:0.75rem;color:#5a7aa8">{auto_venue}</div>
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -411,10 +436,37 @@ if uk_rec:
 else:
     record_html = ""
 
+game_day_banner = ""
+if _game_today and next_game:
+    try:
+        from datetime import datetime as _dt
+        import zoneinfo as _zi
+        _et = _zi.ZoneInfo("America/New_York")
+        _gdt = _dt.fromisoformat(next_game['date'].replace('Z', '+00:00'))
+        _gtime = _gdt.astimezone(_et).strftime("%I:%M %p ET")
+    except Exception:
+        _gtime = "Today"
+    _opp = auto_opponent if next_game else ""
+    game_day_banner = f"""
+    <div style="background:linear-gradient(90deg,#0033A0,#001f6b);
+                border-bottom:2px solid #4a90d9;padding:0.5rem 2rem;
+                margin:-1.5rem -1rem 0 -1rem;
+                display:flex;align-items:center;gap:0.8rem">
+        <span style="font-family:'Barlow Condensed';font-size:1rem;font-weight:800;
+                     letter-spacing:0.15em;text-transform:uppercase;color:#fff">
+            🏀 GAME DAY
+        </span>
+        <span style="font-size:0.85rem;color:#a0c4f0">
+            vs {_opp} · {_gtime} · {next_game.get('venue_name','')}
+        </span>
+    </div>"""
+
 st.markdown(f"""
+{game_day_banner}
 <div class="bbn-header">
+  <img src="{UK_LOGO}" style="width:64px;height:64px;object-fit:contain">
   <div>
-    <h1>🏀 Big Blue Nation</h1>
+    <h1>Big Blue Nation</h1>
     <div class="subtitle">AI Game Analyst · Kentucky Wildcats Basketball</div>
     {record_html}
   </div>
@@ -461,13 +513,16 @@ with tab_game:
 
     col_uk, col_vs, col_opp, col_prob = st.columns([2, 0.6, 2, 3])
 
+    _opp_logo_url = get_espn_logo_url(result['opponent'])
+    _opp_logo_tag = f'<img src="{_opp_logo_url}" style="width:48px;height:48px;object-fit:contain;margin-bottom:0.3rem"><br>' if _opp_logo_url else ''
+
     with col_uk:
         st.markdown(f"""
         <div class="score-display">
+            <img src="{UK_LOGO}" style="width:48px;height:48px;object-fit:contain;margin-bottom:0.3rem"><br>
             <div class="score-team">Kentucky Wildcats</div>
             <div class="score-pts" style="color:#4a90d9">{result['uk_score']}</div>
             <div style="font-size:0.78rem;color:#5a7aa8;margin-top:0.3rem">{venue_str}</div>
-            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -482,6 +537,7 @@ with tab_game:
     with col_opp:
         st.markdown(f"""
         <div class="score-display">
+        {_opp_logo_tag}
         <div class="score-team">{result['opponent']}</div>
         <div class="score-pts" style="color:#e05c5c">{result['opp_score']}</div>
         <div style="font-size:0.78rem;color:#5a7aa8;margin-top:0.3rem">
@@ -736,7 +792,7 @@ with tab_models:
     col_shap, col_val = st.columns([1.2, 1])
 
     with col_shap:
-        st.markdown('<div class="section-title">Feature Importance (SHAP)</div>',
+        st.markdown('<div class="section-title">Feature Importance — V6 (SHAP)</div>',
                 unsafe_allow_html=True)
         if os.path.exists(SHAP_PATH):
             img = Image.open(SHAP_PATH)
@@ -745,7 +801,7 @@ with tab_models:
             st.info("SHAP plot not found. Run the notebook to generate it.")
 
     with col_val:
-        st.markdown('<div class="section-title">Model Accuracy — V3</div>',
+        st.markdown('<div class="section-title">Model Accuracy — V6</div>',
                 unsafe_allow_html=True)
 
         st.markdown("""
@@ -756,8 +812,8 @@ with tab_models:
         <tbody>
           <tr>
             <td>Points — Guards</td>
-            <td>4.39 pts</td><td>5.71 pts</td>
-            <td class="val-good">+1.32 pts</td>
+            <td>4.18 pts</td><td>5.71 pts</td>
+            <td class="val-good">+1.53 pts</td>
           </tr>
           <tr>
             <td>Points — F/C</td>
@@ -766,35 +822,104 @@ with tab_models:
           </tr>
           <tr>
             <td>Player Rebounds</td>
-            <td>1.75 reb</td><td>2.02 reb</td>
-            <td class="val-good">+0.27 reb</td>
+            <td>1.74 reb</td><td>2.02 reb</td>
+            <td class="val-good">+0.28 reb</td>
           </tr>
           <tr>
             <td>Player Assists</td>
-            <td>1.19 ast</td><td>1.50 ast</td>
-            <td class="val-good">+0.31 ast</td>
+            <td>1.21 ast</td><td>1.50 ast</td>
+            <td class="val-good">+0.29 ast</td>
           </tr>
           <tr>
             <td>Player Minutes</td>
-            <td>4.83 min</td><td>7.86 min</td>
-            <td class="val-good">+3.03 min</td>
+            <td>4.82 min</td><td>7.86 min</td>
+            <td class="val-good">+3.04 min</td>
           </tr>
           <tr>
             <td>Opponent Score (5-fold CV)</td>
-            <td>8.01 pts</td><td>9.07 pts</td>
-            <td class="val-good">+1.06 pts</td>
+            <td>7.89 pts</td><td>9.07 pts</td>
+            <td class="val-good">+1.18 pts</td>
           </tr>
           <tr>
             <td>Win Probability (Pope era)</td>
-            <td>76.0%</td><td>—</td>
+            <td>86.6%</td><td>—</td>
             <td class="val-good">CV Accuracy</td>
           </tr>
         </tbody>
         </table>
         <div style="font-size:0.72rem;color:#3a4a6a;margin-top:0.5rem">
-          V4: temporal decay · hot streak · usage rate · SOS · FT rate · pts/min · role stability · conf/neutral
+          V6: pace · off/def efficiency · team 3PT% · opp BPI · opp matchup · temporal decay · usage · SOS
         </div>
         """, unsafe_allow_html=True)
+
+        # ── Pace / Efficiency Trend ────────────────────────────────────────────
+        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Pace &amp; Efficiency Trends</div>',
+                unsafe_allow_html=True)
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            pace_df = pd.read_sql("""
+                SELECT g.date as game_date,
+                       SUM(p.fg_att) - SUM(p.off_rebounds) + SUM(p.turnovers) + 0.44 * SUM(p.ft_att) as uk_poss,
+                       CAST(SUM(p.points) AS REAL) / NULLIF(
+                           SUM(p.fg_att) - SUM(p.off_rebounds) + SUM(p.turnovers) + 0.44 * SUM(p.ft_att), 0
+                       ) * 100 as uk_off_eff
+                FROM player_game_stats p
+                JOIN games g ON g.id = p.game_id
+                WHERE p.season = '2025-26'
+                GROUP BY p.game_id, g.date
+                ORDER BY g.date
+            """, conn)
+            conn.close()
+
+            if len(pace_df) >= 3:
+                pace_df['game_date'] = pd.to_datetime(pace_df['game_date'].str[:10])
+                pace_df['uk_poss']   = pace_df['uk_poss'].clip(55, 90)
+                pace_df['uk_off_eff']= pace_df['uk_off_eff'].clip(60, 140)
+
+                fig_pace = go.Figure()
+                fig_pace.add_trace(go.Scatter(
+                    x=pace_df['game_date'], y=pace_df['uk_poss'],
+                    mode='lines+markers', name='Possessions',
+                    line=dict(color='#4a90d9', width=2),
+                    marker=dict(size=5),
+                    hovertemplate='%{x|%b %d}: %{y:.0f} poss<extra></extra>',
+                ))
+                fig_pace.update_layout(
+                    height=150, margin=dict(t=10, b=30, l=40, r=10),
+                    paper_bgcolor='#111827', plot_bgcolor='#111827',
+                    font_color='#5a7aa8', showlegend=False,
+                    yaxis=dict(title='Poss/Game', gridcolor='#1e2a4a'),
+                    xaxis=dict(gridcolor='#1e2a4a'),
+                )
+                st.plotly_chart(fig_pace, use_container_width=True,
+                                config={'displayModeBar': False})
+                st.caption("Possessions per game (pace). Higher = faster-paced game.")
+
+                fig_eff = go.Figure()
+                fig_eff.add_trace(go.Scatter(
+                    x=pace_df['game_date'], y=pace_df['uk_off_eff'],
+                    mode='lines+markers', name='Off Eff',
+                    line=dict(color='#4caf7d', width=2),
+                    marker=dict(size=5),
+                    hovertemplate='%{x|%b %d}: %{y:.1f} pts/100<extra></extra>',
+                ))
+                fig_eff.add_hline(y=pace_df['uk_off_eff'].mean(),
+                                  line=dict(color='#3a4a6a', width=1, dash='dash'))
+                fig_eff.update_layout(
+                    height=150, margin=dict(t=10, b=30, l=40, r=10),
+                    paper_bgcolor='#111827', plot_bgcolor='#111827',
+                    font_color='#5a7aa8', showlegend=False,
+                    yaxis=dict(title='Pts/100 Poss', gridcolor='#1e2a4a'),
+                    xaxis=dict(gridcolor='#1e2a4a'),
+                )
+                st.plotly_chart(fig_eff, use_container_width=True,
+                                config={'displayModeBar': False})
+                st.caption(f"Offensive efficiency (pts per 100 possessions). Season avg: {pace_df['uk_off_eff'].mean():.1f}")
+            else:
+                st.caption("Not enough games yet for trend charts.")
+        except Exception as _e:
+            st.caption(f"Pace trend unavailable: {_e}")
 
         # ── NET Rank Trend ─────────────────────────────────────────────────────
         st.markdown('<hr class="divider">', unsafe_allow_html=True)

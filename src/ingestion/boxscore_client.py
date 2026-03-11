@@ -138,16 +138,31 @@ def get_opponent_player_stats(opp_team, game_id, game_date, opponent_name, seaso
 
 
 def get_team_totals(team_data):
-    """Extract team totals from boxscore"""
+    """Extract team totals from boxscore.
+    ESPN totals array order: [min, pts, fg, 3pt, ft, reb, ast, tov, stl, blk, oreb, dreb, pf]
+      idx: 0    1    2    3   4   5    6    7    8    9    10   11   12
+    FT field (index 4) is formatted as "made-att" string.
+    """
     totals = {}
     for stats_group in team_data.get("statistics", []):
         totals_raw = stats_group.get("totals", [])
         if totals_raw:
+            # Parse FT attempts from "made-att" string at index 4
+            ft_att = 0
+            if len(totals_raw) > 4:
+                ft_str = str(totals_raw[4])
+                if '-' in ft_str:
+                    try:
+                        ft_att = int(ft_str.split('-')[1])
+                    except (ValueError, IndexError):
+                        ft_att = 0
             totals = {
-                "points": int(totals_raw[1]) if len(totals_raw) > 1 else 0,
-                "rebounds": int(totals_raw[5]) if len(totals_raw) > 5 else 0,
-                "assists": int(totals_raw[6]) if len(totals_raw) > 6 else 0,
-                "turnovers": int(totals_raw[7]) if len(totals_raw) > 7 else 0,
+                "points":       int(totals_raw[1])  if len(totals_raw) > 1  else 0,
+                "rebounds":     int(totals_raw[5])  if len(totals_raw) > 5  else 0,
+                "assists":      int(totals_raw[6])  if len(totals_raw) > 6  else 0,
+                "turnovers":    int(totals_raw[7])  if len(totals_raw) > 7  else 0,
+                "ft_att":       ft_att,
+                "off_rebounds": int(totals_raw[10]) if len(totals_raw) > 10 else 0,
             }
     return totals
 

@@ -599,75 +599,145 @@
           "mtime": "2026-03-11 09:48:29"
         }
       }
+    },
+    {
+      "trained_at": "2026-03-11 13:13:57",
+      "artifacts": {
+        "ast_model.joblib": {
+          "size_kb": 446.5,
+          "sha256_short": "a37cacf6ecda",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "feature_meta_v2.json": {
+          "size_kb": 1.8,
+          "sha256_short": "faea8ab7da98",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "le_opponent.joblib": {
+          "size_kb": 1.3,
+          "sha256_short": "ca8a0df65655",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "le_player.joblib": {
+          "size_kb": 0.8,
+          "sha256_short": "c3deda608073",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "le_position.joblib": {
+          "size_kb": 0.5,
+          "sha256_short": "69c335658caa",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "minutes_model.joblib": {
+          "size_kb": 596.9,
+          "sha256_short": "7cc2ac654d63",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "model_FC.joblib": {
+          "size_kb": 572.9,
+          "sha256_short": "02290653e1f0",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "model_G.joblib": {
+          "size_kb": 573.5,
+          "sha256_short": "e8677f2f86ef",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "model_v3.joblib": {
+          "size_kb": 573.5,
+          "sha256_short": "e8677f2f86ef",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "opp_model_v4.joblib": {
+          "size_kb": 36.2,
+          "sha256_short": "e5160148f13a",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "reb_model.joblib": {
+          "size_kb": 456.0,
+          "sha256_short": "1748ba605e48",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "win_prob_model.joblib": {
+          "size_kb": 0.9,
+          "sha256_short": "db524751669c",
+          "mtime": "2026-03-11 13:13:56"
+        },
+        "win_prob_scaler.joblib": {
+          "size_kb": 0.9,
+          "sha256_short": "30027d399bbf",
+          "mtime": "2026-03-11 13:13:56"
+        }
+      }
     }
   ],
   "latest": {
-    "trained_at": "2026-03-11 09:48:29",
+    "trained_at": "2026-03-11 13:13:57",
     "artifacts": {
       "ast_model.joblib": {
-        "size_kb": 449.8,
-        "sha256_short": "69b4585f14eb",
-        "mtime": "2026-03-11 09:48:29"
+        "size_kb": 446.5,
+        "sha256_short": "a37cacf6ecda",
+        "mtime": "2026-03-11 13:13:56"
       },
       "feature_meta_v2.json": {
         "size_kb": 1.8,
-        "sha256_short": "17a9cfdbf10b",
-        "mtime": "2026-03-11 09:48:29"
+        "sha256_short": "faea8ab7da98",
+        "mtime": "2026-03-11 13:13:56"
       },
       "le_opponent.joblib": {
         "size_kb": 1.3,
         "sha256_short": "ca8a0df65655",
-        "mtime": "2026-03-11 09:48:29"
+        "mtime": "2026-03-11 13:13:56"
       },
       "le_player.joblib": {
         "size_kb": 0.8,
         "sha256_short": "c3deda608073",
-        "mtime": "2026-03-11 09:48:29"
+        "mtime": "2026-03-11 13:13:56"
       },
       "le_position.joblib": {
         "size_kb": 0.5,
         "sha256_short": "69c335658caa",
-        "mtime": "2026-03-11 09:48:29"
+        "mtime": "2026-03-11 13:13:56"
       },
       "minutes_model.joblib": {
         "size_kb": 596.9,
         "sha256_short": "7cc2ac654d63",
-        "mtime": "2026-03-11 09:48:29"
+        "mtime": "2026-03-11 13:13:56"
       },
       "model_FC.joblib": {
-        "size_kb": 569.6,
-        "sha256_short": "3efd62c8829b",
-        "mtime": "2026-03-11 09:48:29"
+        "size_kb": 572.9,
+        "sha256_short": "02290653e1f0",
+        "mtime": "2026-03-11 13:13:56"
       },
       "model_G.joblib": {
-        "size_kb": 568.3,
-        "sha256_short": "7ad1650cdc97",
-        "mtime": "2026-03-11 09:48:29"
+        "size_kb": 573.5,
+        "sha256_short": "e8677f2f86ef",
+        "mtime": "2026-03-11 13:13:56"
       },
       "model_v3.joblib": {
-        "size_kb": 568.3,
-        "sha256_short": "7ad1650cdc97",
-        "mtime": "2026-03-11 09:48:29"
+        "size_kb": 573.5,
+        "sha256_short": "e8677f2f86ef",
+        "mtime": "2026-03-11 13:13:56"
       },
       "opp_model_v4.joblib": {
         "size_kb": 36.2,
-        "sha256_short": "71952f83eeb7",
-        "mtime": "2026-03-11 09:48:29"
+        "sha256_short": "e5160148f13a",
+        "mtime": "2026-03-11 13:13:56"
       },
       "reb_model.joblib": {
-        "size_kb": 455.5,
-        "sha256_short": "0295252d1fa0",
-        "mtime": "2026-03-11 09:48:29"
+        "size_kb": 456.0,
+        "sha256_short": "1748ba605e48",
+        "mtime": "2026-03-11 13:13:56"
       },
       "win_prob_model.joblib": {
         "size_kb": 0.9,
         "sha256_short": "db524751669c",
-        "mtime": "2026-03-11 09:48:29"
+        "mtime": "2026-03-11 13:13:56"
       },
       "win_prob_scaler.joblib": {
         "size_kb": 0.9,
         "sha256_short": "30027d399bbf",
-        "mtime": "2026-03-11 09:48:29"
+        "mtime": "2026-03-11 13:13:56"
       }
     }
   }
