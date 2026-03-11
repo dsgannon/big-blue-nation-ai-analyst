@@ -755,19 +755,24 @@ with tab_models:
         </thead>
         <tbody>
           <tr>
-            <td>Player Points</td>
-            <td>4.20 pts</td><td>4.89 pts</td>
-            <td class="val-good">+0.69 pts</td>
+            <td>Points — Guards</td>
+            <td>4.39 pts</td><td>5.71 pts</td>
+            <td class="val-good">+1.32 pts</td>
+          </tr>
+          <tr>
+            <td>Points — F/C</td>
+            <td>3.19 pts</td><td>3.82 pts</td>
+            <td class="val-good">+0.63 pts</td>
           </tr>
           <tr>
             <td>Player Rebounds</td>
-            <td>1.72 reb</td><td>2.02 reb</td>
-            <td class="val-good">+0.30 reb</td>
+            <td>1.75 reb</td><td>2.02 reb</td>
+            <td class="val-good">+0.27 reb</td>
           </tr>
           <tr>
             <td>Player Assists</td>
-            <td>1.18 ast</td><td>1.50 ast</td>
-            <td class="val-good">+0.32 ast</td>
+            <td>1.19 ast</td><td>1.50 ast</td>
+            <td class="val-good">+0.31 ast</td>
           </tr>
           <tr>
             <td>Player Minutes</td>
@@ -780,8 +785,8 @@ with tab_models:
             <td class="val-good">+1.06 pts</td>
           </tr>
           <tr>
-            <td>Win Probability</td>
-            <td>80.0%</td><td>—</td>
+            <td>Win Probability (6 seasons)</td>
+            <td>92.4%</td><td>—</td>
             <td class="val-good">CV Accuracy</td>
           </tr>
         </tbody>

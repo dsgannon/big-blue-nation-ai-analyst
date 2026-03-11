@@ -18,6 +18,8 @@
     "ft_rate_roll3",
     "pts_per_min_roll5",
     "role_stability",
+    "cumulative_minutes_last3",
+    "home_away_delta",
     "is_home",
     "neutral_site",
     "conf_game",
@@ -45,6 +47,7 @@
     "usage_rate_roll3",
     "sos_roll5",
     "role_stability",
+    "cumulative_minutes_last3",
     "starter",
     "is_home",
     "game_number",
@@ -69,16 +72,9 @@
     "uk_bpi_defense"
   ],
   "WIN_PROB_FEATURES": [
-    "pts_diff",
-    "reb_diff",
-    "uk_team_ast",
-    "uk_team_to",
-    "uk_team_fg_pct",
-    "uk_team_3pt_pct",
-    "opp_pts_roll3",
-    "opp_fg_pct_roll3",
-    "uk_def_roll3",
-    "uk_is_home"
+    "margin_bucket",
+    "uk_is_home",
+    "neutral_site"
   ],
   "uk_bpi_defense": 7.4
 }

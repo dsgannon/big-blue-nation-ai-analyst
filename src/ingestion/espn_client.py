@@ -90,7 +90,57 @@ def  get_team_schedule():
         games.append(game)
     return games
 
-                            
+def get_historical_schedule(season_year: int):
+    """
+    Fetch completed game results for a historical season.
+    season_year: e.g. 2024 for the 2024-25 season, 2023 for 2023-24, etc.
+    Returns list of dicts with game info (same format as get_team_schedule).
+    """
+    url = f"{BASE_URL}/teams/{KENTUCKY_TEAM_ID}/schedule"
+    response = requests.get(url, params={"season": str(season_year)})
+    data = response.json()
+
+    games = []
+    for event in data.get("events", []):
+        competition = event.get("competitions", [{}])[0]
+        status = competition.get("status", {}).get("type", {})
+        if not status.get("completed", False):
+            continue  # skip incomplete games
+
+        competitors = competition.get("competitors", [])
+        home_team = next((c for c in competitors if c.get("homeAway") == "home"), {})
+        away_team = next((c for c in competitors if c.get("homeAway") == "away"), {})
+
+        home_score = home_team.get("score", {})
+        away_score = away_team.get("score", {})
+        home_score_val = home_score.get("displayValue") if isinstance(home_score, dict) else home_score
+        away_score_val = away_score.get("displayValue") if isinstance(away_score, dict) else away_score
+
+        venue = competition.get("venue", {})
+        season_str = f"{season_year}-{str(season_year + 1)[2:]}"
+
+        games.append({
+            'id':           event.get("id"),
+            'season':       season_str,
+            'date':         event.get("date", "")[:10],
+            'name':         event.get("name", ""),
+            'short_name':   event.get("shortName", ""),
+            'status':       status.get("name", ""),
+            'season_type':  event.get("seasonType", {}).get("name", ""),
+            'venue_name':   venue.get("fullName", ""),
+            'venue_city':   venue.get("address", {}).get("city", ""),
+            'venue_state':  venue.get("address", {}).get("state", ""),
+            'neutral_site': int(competition.get("neutralSite", False)),
+            'home_team':    home_team.get("team", {}).get("displayName", ""),
+            'away_team':    away_team.get("team", {}).get("displayName", ""),
+            'home_score':   home_score_val,
+            'away_score':   away_score_val,
+            'network':      None,
+            'attendance':   None,
+        })
+    return games
+
+
 def get_scoreboard():
     """Get today's college basketball scoreboard"""
     url = f"{BASE_URL}/scoreboard"

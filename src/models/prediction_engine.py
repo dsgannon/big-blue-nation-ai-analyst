@@ -84,12 +84,7 @@ OPP_FEATURES = [
     'uk_bpi_defense',   # V2: injury-aware via Kentucky's current BPI defense
 ]
 
-WIN_PROB_FEATURES = [
-    'pts_diff', 'reb_diff',
-    'uk_team_ast', 'uk_team_to', 'uk_team_fg_pct', 'uk_team_3pt_pct',
-    'opp_pts_roll3', 'opp_fg_pct_roll3', 'uk_def_roll3',
-    'uk_is_home',
-]
+WIN_PROB_FEATURES = ['pts_diff', 'uk_is_home', 'neutral_site']
 
 # ── V3 feature lists — active after retraining with usage_rate + sos ──────────
 # usage_rate_roll3: player's share of possessions used (proxy for role/load)
@@ -166,6 +161,8 @@ class PredictionEngine:
 
     def __init__(self):
         self.model_v3         = None
+        self.model_G          = None
+        self.model_FC         = None
         self.minutes_model    = None
         self.opp_model_v4     = None
         self.reb_model        = None
@@ -188,6 +185,14 @@ class PredictionEngine:
         """Load trained models and encoders from disk."""
         try:
             self.model_v3      = joblib.load(os.path.join(MODELS_DIR, 'model_v3.joblib'))
+            try:
+                self.model_G  = joblib.load(os.path.join(MODELS_DIR, 'model_G.joblib'))
+                self.model_FC = joblib.load(os.path.join(MODELS_DIR, 'model_FC.joblib'))
+                print("✅ Position-specific models loaded (G, FC)")
+            except Exception:
+                self.model_G  = self.model_v3
+                self.model_FC = self.model_v3
+                print("⚠️  Position-specific models not found, using combined model")
             self.minutes_model = joblib.load(os.path.join(MODELS_DIR, 'minutes_model.joblib'))
             self.opp_model_v4  = joblib.load(os.path.join(MODELS_DIR, 'opp_model_v4.joblib'))
             self.reb_model     = joblib.load(os.path.join(MODELS_DIR, 'reb_model.joblib'))
@@ -544,7 +549,8 @@ class PredictionEngine:
 
         # ── Step 3: Predict points/rebounds/assists ────────────────────────────
         X_pts = pd.DataFrame([row[self._feature_cols]])
-        pred_points   = max(0.0, float(self.model_v3.predict(X_pts)[0]))
+        model = self.model_G if row.get('position', 'G') == 'G' else self.model_FC
+        pred_points   = max(0.0, float(model.predict(X_pts)[0]))
         pred_rebounds = max(0.0, float(self.reb_model.predict(X_pts)[0]))
         pred_assists  = max(0.0, float(self.ast_model.predict(X_pts)[0]))
 
@@ -617,33 +623,16 @@ class PredictionEngine:
         return round(float(self.opp_model_v4.predict(opp_input)[0]), 1)
 
     def _win_prob_logistic(self, projections, opp_score, is_home,
-                            opp_pts_roll3, opp_fg_pct_roll3, uk_def_roll3):
+                            opp_pts_roll3=None, opp_fg_pct_roll3=None, uk_def_roll3=None,
+                            neutral_site=0):
         """
         V2 win probability using trained logistic regression.
-        Falls back to hybrid model if win_prob_model not available.
+        Uses simplified features: pts_diff, uk_is_home, neutral_site.
         """
-        uk_pts   = sum(p['points']   for p in projections)
-        uk_reb   = sum(p['rebounds'] for p in projections)
-        uk_ast   = sum(p['assists']  for p in projections)
-        uk_to    = 12.0  # season average fallback
-        uk_fg    = 0.46  # season average fallback
-        uk_3pt   = 0.34  # season average fallback
-
+        uk_pts   = sum(p['points'] for p in projections)
         pts_diff = uk_pts - opp_score
-        reb_diff = uk_reb - 31.0   # opponent average rebounds
 
-        features = pd.DataFrame([{
-            'pts_diff':        pts_diff,
-            'reb_diff':        reb_diff,
-            'uk_team_ast':     uk_ast,
-            'uk_team_to':      uk_to,
-            'uk_team_fg_pct':  uk_fg,
-            'uk_team_3pt_pct': uk_3pt,
-            'opp_pts_roll3':   opp_pts_roll3,
-            'opp_fg_pct_roll3':opp_fg_pct_roll3,
-            'uk_def_roll3':    uk_def_roll3,
-            'uk_is_home':      int(is_home),
-        }])
+        features = [[pts_diff, int(is_home), int(neutral_site)]]
 
         X_scaled = self.win_prob_scaler.transform(features)
         prob = float(self.win_prob_model.predict_proba(X_scaled)[0][1])
