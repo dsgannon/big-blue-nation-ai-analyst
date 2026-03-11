@@ -18,7 +18,7 @@ sys.path.insert(0, BASE_DIR)
 from src.models.prediction_engine import PredictionEngine, CURRENT_ROSTER
 
 DB_PATH    = os.path.join(BASE_DIR, 'data', 'processed', 'kentucky_basketball.db')
-SHAP_PATH  = os.path.join(BASE_DIR, 'notebooks', 'shap_summary_v3.png')
+SHAP_PATH  = os.path.join(BASE_DIR, 'notebooks', 'shap_summary_v4.png')
 MODELS_DIR = os.path.join(BASE_DIR, 'data', 'models')
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -340,7 +340,7 @@ with st.sidebar:
                 unsafe_allow_html=True)
 
     all_players = [p['name'] for p in CURRENT_ROSTER if not p.get('walk_on')]
-    default_out = ['Jayden Quaintance', 'Jaland Lowe', 'Kam Williams']
+    default_out = ['Jayden Quaintance', 'Jaland Lowe']
     injuries = []
     for player in all_players:
         if st.checkbox(player, value=(player in default_out)):
@@ -571,7 +571,7 @@ with tab_models:
             st.info("SHAP plot not found. Run the notebook to generate it.")
 
     with col_val:
-        st.markdown('<div class="section-title">Model Accuracy</div>',
+        st.markdown('<div class="section-title">Model Accuracy — V2</div>',
                 unsafe_allow_html=True)
 
         st.markdown("""
@@ -582,38 +582,88 @@ with tab_models:
         <tbody>
           <tr>
             <td>Player Points</td>
-            <td>4.07 pts</td><td>5.85 pts</td>
-            <td class="val-good">+1.78 pts</td>
+            <td>4.05 pts</td><td>4.89 pts</td>
+            <td class="val-good">+0.84 pts</td>
           </tr>
           <tr>
             <td>Player Rebounds</td>
-            <td>1.58 reb</td><td>2.00 reb</td>
-            <td class="val-good">+0.42 reb</td>
+            <td>1.86 reb</td><td>2.02 reb</td>
+            <td class="val-good">+0.16 reb</td>
           </tr>
           <tr>
             <td>Player Assists</td>
-            <td>1.03 ast</td><td>1.36 ast</td>
-            <td class="val-good">+0.33 ast</td>
+            <td>1.22 ast</td><td>1.50 ast</td>
+            <td class="val-good">+0.28 ast</td>
           </tr>
           <tr>
             <td>Player Minutes</td>
-            <td>4.1 min</td><td>9.1 min</td>
-            <td class="val-good">+5.0 min</td>
+            <td>5.06 min</td><td>7.86 min</td>
+            <td class="val-good">+2.80 min</td>
           </tr>
           <tr>
             <td>Opponent Score</td>
-            <td>6.3 pts</td><td>8.7 pts</td>
-            <td class="val-good">+2.4 pts</td>
+            <td>8.49 pts</td><td>10.85 pts</td>
+            <td class="val-good">+2.36 pts</td>
           </tr>
           <tr>
             <td>Win Probability</td>
-            <td>78.5%</td><td>—</td>
-            <td class="val-good">Accuracy</td>
+            <td>80.0%</td><td>—</td>
+            <td class="val-good">CV Accuracy</td>
           </tr>
         </tbody>
         </table>
+        <div style="font-size:0.72rem;color:#3a4a6a;margin-top:0.5rem">
+          V2: temporal decay · hot streak · logistic win prob · 567 records
+        </div>
         """, unsafe_allow_html=True)
 
+        # ── NET Rank Trend ─────────────────────────────────────────────────────
+        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">NET Rank History</div>',
+                unsafe_allow_html=True)
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            net_hist = pd.read_sql("""
+                SELECT date, team_name, net_rank
+                FROM net_rankings_history
+                WHERE season = '2025-26'
+                ORDER BY date
+            """, conn)
+            conn.close()
+
+            if len(net_hist) > 0:
+                # Show UK trend
+                uk_hist = net_hist[net_hist['team_name'] == 'Kentucky']
+                if len(uk_hist) > 1:
+                    fig_net = go.Figure()
+                    fig_net.add_trace(go.Scatter(
+                        x=uk_hist['date'], y=uk_hist['net_rank'],
+                        mode='lines+markers',
+                        line=dict(color='#0033A0', width=2),
+                        marker=dict(size=6),
+                        name='Kentucky NET'
+                    ))
+                    fig_net.update_layout(
+                        height=180,
+                        margin=dict(t=10, b=30, l=40, r=10),
+                        paper_bgcolor='#111827',
+                        plot_bgcolor='#111827',
+                        font_color='#5a7aa8',
+                        yaxis=dict(autorange='reversed',
+                                   gridcolor='#1e2a4a',
+                                   title='NET Rank'),
+                        xaxis=dict(gridcolor='#1e2a4a'),
+                    )
+                    st.plotly_chart(fig_net, use_container_width=True,
+                                    config={'displayModeBar': False})
+                else:
+                    st.caption("NET rank history builds up after each daily refresh.")
+            else:
+                st.caption("No NET rank history yet. Run refresh.py to start tracking.")
+        except Exception:
+            st.caption("NET rank history not available yet.")
+
+        # ── Post-Game Validation ───────────────────────────────────────────────
         val_df = load_validation_data()
         if val_df is not None and len(val_df) > 0:
             st.markdown('<hr class="divider">', unsafe_allow_html=True)

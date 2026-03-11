@@ -262,6 +262,139 @@ class PredictionEngine:
 
     # ── Core prediction methods ────────────────────────────────────────────────
 
+    # ── Confidence interval helpers ────────────────────────────────────────────
+
+    def _stat_std(self, player_history, stat: str, n_games: int = 10) -> float:
+        """
+        Return the std dev of a player's last n_games for `stat`.
+        Used to build prediction intervals without retraining.
+        """
+        vals = player_history[stat].dropna().tolist()
+        if len(vals) < 2:
+            return 0.0
+        recent = vals[-n_games:]
+        mean   = sum(recent) / len(recent)
+        var    = sum((v - mean) ** 2 for v in recent) / len(recent)
+        return var ** 0.5
+
+    def predict_player_with_ci(self, player_name, opponent, is_home, net_rank,
+                                days_rest=3, is_back_to_back=0, starter=None,
+                                season_segment=3, z: float = 1.28) -> dict | None:
+        """
+        Predict player stats and include prediction interval bounds.
+
+        The interval is  prediction ± z * rolling_std(last 10 games).
+        Default z=1.28 gives ~80% coverage assuming roughly normal game-to-game
+        variance. Use z=1.645 for 90% or z=1.96 for 95%.
+
+        Returns the same dict as predict_player() with extra keys:
+          points_lo,   points_hi
+          rebounds_lo, rebounds_hi
+          assists_lo,  assists_hi
+          minutes_lo,  minutes_hi
+          ci_z         (the z value used)
+        """
+        result = self.predict_player(
+            player_name, opponent, is_home, net_rank,
+            days_rest=days_rest, is_back_to_back=is_back_to_back,
+            starter=starter, season_segment=season_segment,
+        )
+        if result is None:
+            return None
+
+        player_history = self.df_model[
+            self.df_model['player_name'] == player_name
+        ].sort_values('game_date')
+
+        for stat in ['points', 'rebounds', 'assists', 'minutes']:
+            std   = self._stat_std(player_history, stat)
+            half  = round(z * std, 1)
+            pred  = result[stat]
+            result[f'{stat}_lo'] = round(max(0.0, pred - half), 1)
+            result[f'{stat}_hi'] = round(pred + half, 1)
+
+        result['ci_z'] = z
+        return result
+
+    def predict_game_with_ci(self, opponent, is_home, net_rank, opp_bpi=10.0,
+                              injuries=None, days_rest=3, is_back_to_back=0,
+                              roster=None, z: float = 1.28) -> dict:
+        """
+        Full game prediction with confidence intervals on every player projection.
+
+        Returns the same dict as predict_game() but each projection in
+        `projections` has _lo / _hi bounds on points, rebounds, assists, minutes.
+        """
+        injuries = injuries or []
+        roster   = roster or CURRENT_ROSTER
+
+        active_roster = [
+            p for p in roster
+            if p['name'] not in injuries and not p.get('walk_on', False)
+        ]
+
+        projections = []
+        for p in active_roster:
+            result = self.predict_player_with_ci(
+                player_name     = p['name'],
+                opponent        = opponent,
+                is_home         = is_home,
+                net_rank        = net_rank,
+                days_rest       = days_rest,
+                is_back_to_back = is_back_to_back,
+                starter         = p['starter'],
+                z               = z,
+            )
+            if result:
+                projections.append(result)
+
+        uk_score = sum(p['points'] for p in projections)
+
+        injury_bpi_penalty   = len(injuries) * 0.4
+        adjusted_bpi_defense = self.uk_bpi_defense + injury_bpi_penalty
+        opp_score = self.predict_opponent_score(
+            opponent, is_home, net_rank,
+            uk_bpi_defense=adjusted_bpi_defense
+        )
+
+        opp_games = self.opp_model_df[
+            self.opp_model_df['team'] == opponent
+        ].sort_values('game_date')
+
+        if len(opp_games) > 0:
+            last = opp_games.iloc[-1]
+            opp_pts_roll3    = last.get('opp_pts_roll3',    self.opp_model_df['opp_team_points'].mean())
+            opp_fg_pct_roll3 = last.get('opp_fg_pct_roll3', self.opp_model_df['opp_fg_pct'].mean())
+            uk_def_roll3     = last.get('uk_def_roll3',     self.opp_model_df['uk_def_roll3'].mean())
+        else:
+            opp_pts_roll3    = self.opp_model_df['opp_team_points'].mean()
+            opp_fg_pct_roll3 = self.opp_model_df['opp_fg_pct'].mean()
+            uk_def_roll3     = self.opp_model_df['uk_def_roll3'].mean()
+
+        if self._win_prob_v2:
+            win_prob = self._win_prob_logistic(
+                projections, opp_score, is_home,
+                opp_pts_roll3, opp_fg_pct_roll3, uk_def_roll3
+            )
+        else:
+            win_prob = self._win_prob_hybrid(
+                uk_score, opp_score, opp_bpi, is_home, injuries
+            )
+
+        point_diff = round(uk_score - opp_score, 1)
+
+        return {
+            'opponent':        opponent,
+            'is_home':         is_home,
+            'uk_score':        round(uk_score, 1),
+            'opp_score':       round(opp_score, 1),
+            'point_diff':      point_diff,
+            'win_probability': round(win_prob * 100, 1),
+            'injuries':        injuries,
+            'projections':     projections,
+            'ci_z':            z,
+        }
+
     def predict_player(self, player_name, opponent, is_home, net_rank,
                        days_rest=3, is_back_to_back=0, starter=None,
                        season_segment=3):
