@@ -213,21 +213,29 @@ class PredictionEngine:
         except FileNotFoundError:
             self._win_prob_v2 = False
 
-        # Detect feature version from trained model's stored feature names
+        # Load feature columns directly from model artifacts (source of truth)
         try:
-            trained_features = self.model_v3.get_booster().feature_names or []
-            if 'usage_rate_roll3' in trained_features:
-                self._feature_version = 'v3'
-                self._feature_cols    = FEATURE_COLS_V3
-                self._minutes_cols    = MINUTES_FEATURES_V3
-            else:
+            with open(os.path.join(MODELS_DIR, 'feature_meta_v2.json')) as f:
+                meta = json.load(f)
+            self._feature_cols  = meta['FEATURE_COLS_V2']
+            self._minutes_cols  = meta['MINUTES_FEATURES_V2']
+            self._feature_version = 'v5'
+        except Exception:
+            # Fallback: detect from model feature names
+            try:
+                trained_features = self.model_v3.get_booster().feature_names or []
+                if 'usage_rate_roll3' in trained_features:
+                    self._feature_version = 'v3'
+                    self._feature_cols    = FEATURE_COLS_V3
+                    self._minutes_cols    = MINUTES_FEATURES_V3
+                else:
+                    self._feature_version = 'v2'
+                    self._feature_cols    = FEATURE_COLS
+                    self._minutes_cols    = MINUTES_FEATURES
+            except Exception:
                 self._feature_version = 'v2'
                 self._feature_cols    = FEATURE_COLS
                 self._minutes_cols    = MINUTES_FEATURES
-        except Exception:
-            self._feature_version = 'v2'
-            self._feature_cols    = FEATURE_COLS
-            self._minutes_cols    = MINUTES_FEATURES
 
         print(f"✅ Models loaded from disk (feature version: {self._feature_version})")
 
@@ -515,6 +523,46 @@ class PredictionEngine:
         # ── Compute V3 features ────────────────────────────────────────────────
         row['usage_rate_roll3'] = self._compute_usage_rate(player_data, n=3)
         row['sos_roll5']        = self._compute_sos(player_data, n=5)
+
+        # ── Compute V4/V5 features ─────────────────────────────────────────────
+        recent5 = player_data.tail(5)
+        recent3 = player_data.tail(3)
+
+        # ft_rate_roll3: free throw attempt rate (FTA/FGA) rolling 3
+        ft_rate = (recent3['ft_att'] / recent3['fg_att'].clip(lower=1)).mean()
+        row['ft_rate_roll3'] = ft_rate if pd.notna(ft_rate) else 0.3
+
+        # pts_per_min_roll5: efficiency per minute rolling 5
+        ppm = (recent5['points'] / recent5['minutes'].clip(lower=1)).mean()
+        row['pts_per_min_roll5'] = ppm if pd.notna(ppm) else 0.5
+
+        # role_stability: std of minutes over last 5 games
+        row['role_stability'] = float(recent5['minutes'].std()) if len(recent5) >= 3 else 5.0
+
+        # cumulative_minutes_last3: fatigue index
+        row['cumulative_minutes_last3'] = float(recent3['minutes'].sum()) if len(recent3) >= 1 else 60.0
+
+        # home_away_delta: player's career home avg minus away avg
+        home_pts = player_data[player_data['home_away'] == 'home']['points'].mean()
+        away_pts = player_data[player_data['home_away'] == 'away']['points'].mean()
+        row['home_away_delta'] = float(home_pts - away_pts) if pd.notna(home_pts) and pd.notna(away_pts) else 0.0
+
+        # neutral_site: passed via is_home context (0 = away or neutral)
+        row['neutral_site'] = 0  # default; can be overridden externally
+
+        # conf_game: SEC conference opponent
+        SEC_TEAMS = {
+            'Alabama Crimson Tide', 'Arkansas Razorbacks', 'Auburn Tigers',
+            'Florida Gators', 'Georgia Bulldogs', 'LSU Tigers',
+            'Mississippi State Bulldogs', 'Missouri Tigers', 'Ole Miss Rebels',
+            'South Carolina Gamecocks', 'Tennessee Volunteers', 'Texas A&M Aggies',
+            'Texas Longhorns', 'Vanderbilt Commodores', 'Oklahoma Sooners'
+        }
+        row['conf_game'] = int(opponent in SEC_TEAMS)
+
+        # steals_roll3: already in player_model_features if refreshed; fallback
+        if 'steals_roll3' not in row or pd.isna(row.get('steals_roll3')):
+            row['steals_roll3'] = float(recent3['steals'].mean()) if 'steals' in recent3.columns else 0.5
 
         # ── Opponent defensive context ─────────────────────────────────────────
         opp_def = self.df_model[self.df_model['opponent'] == opponent][

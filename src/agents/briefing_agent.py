@@ -28,7 +28,7 @@ KENTUCKY_TEAM_ID = "96"
 
 def build_context(stories, metrics, rankings, next_game, standings,
                   prediction_text="", opp_net_rank=None, opp_bpi=None):
-    """Build context string to feed to Mistral"""
+    """Build context string for the briefing prompt"""
 
     # Rankings
     ap = rankings.get("ap_poll")
@@ -217,7 +217,7 @@ def run_briefing(tone="fan"):
         print(f"⚠️  Prediction failed: {e}")
         prediction_text = ""
 
-    print("🤖 Generating briefing with Mistral...")
+    print("🤖 Generating briefing with Claude...")
     context = build_context(
         stories, metrics, rankings, next_game, standings,
         prediction_text=prediction_text,
