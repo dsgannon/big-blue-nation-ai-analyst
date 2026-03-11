@@ -21,6 +21,8 @@
     "assists_decay3",
     "hot_streak",
     "usage_trend",
+    "usage_rate_roll3",
+    "sos_roll5",
     "is_home",
     "game_number",
     "starter",
@@ -43,6 +45,8 @@
     "minutes_trend",
     "minutes_decay3",
     "minutes_decay5",
+    "usage_rate_roll3",
+    "sos_roll5",
     "starter",
     "is_home",
     "game_number",
@@ -63,7 +67,8 @@
     "opp_reb_roll3",
     "uk_def_roll3",
     "uk_def_roll5",
-    "uk_def_season"
+    "uk_def_season",
+    "uk_bpi_defense"
   ],
   "WIN_PROB_FEATURES": [
     "pts_diff",
