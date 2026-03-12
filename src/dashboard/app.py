@@ -601,6 +601,7 @@ if run_btn or st.session_state.result is None:
                 injuries        = injuries,
                 days_rest       = days_rest,
                 is_back_to_back = int(is_b2b),
+                neutral_site    = int(venue_selection == "Neutral"),
             )
             st.session_state.result = result
         except Exception as e:
@@ -649,7 +650,10 @@ with tab_game:
         <div class="score-team">{result['opponent']}</div>
         <div class="score-pts" style="color:#e05c5c">{result['opp_score']}</div>
         <div style="font-size:0.78rem;color:#6080a8;margin-top:0.3rem">
-            NET #{net_rank} · BPI {opp_bpi}
+            NET #{net_rank} · BPI {opp_bpi}{
+                f" · T{result['opp_adv']['t_rank']} · AdjEM {result['opp_adv']['adj_em']:+.1f}"
+                if result.get('opp_adv') else ""
+            }
         </div>
         </div>
         """, unsafe_allow_html=True)
