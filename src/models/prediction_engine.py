@@ -32,7 +32,6 @@ import joblib
 import numpy as np
 import pandas as pd
 from scipy.special import expit
-from sklearn.preprocessing import LabelEncoder
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -207,9 +206,6 @@ class PredictionEngine:
         self.ast_model        = None
         self.win_prob_model   = None
         self.win_prob_scaler  = None
-        self.le_player        = None
-        self.le_position      = None
-        self.le_opponent      = None
         self.df_model         = None
         self.opp_model_df     = None
         self.thresholds       = {}
@@ -236,9 +232,6 @@ class PredictionEngine:
             self.opp_model_v4  = joblib.load(os.path.join(MODELS_DIR, 'opp_model_v4.joblib'))
             self.reb_model     = joblib.load(os.path.join(MODELS_DIR, 'reb_model.joblib'))
             self.ast_model     = joblib.load(os.path.join(MODELS_DIR, 'ast_model.joblib'))
-            self.le_player     = joblib.load(os.path.join(MODELS_DIR, 'le_player.joblib'))
-            self.le_position   = joblib.load(os.path.join(MODELS_DIR, 'le_position.joblib'))
-            self.le_opponent   = joblib.load(os.path.join(MODELS_DIR, 'le_opponent.joblib'))
         except FileNotFoundError as e:
             raise RuntimeError(
                 f"Models not found. Run model_v2.ipynb to train and save models first.\n{e}"
@@ -262,7 +255,12 @@ class PredictionEngine:
         except Exception:
             # Fallback: detect from model feature names
             try:
-                trained_features = self.model_v3.get_booster().feature_names or []
+                # CatBoost: use feature_names_ attribute
+                if hasattr(self.model_v3, 'feature_names_'):
+                    trained_features = list(self.model_v3.feature_names_)
+                else:
+                    # XGBoost fallback
+                    trained_features = self.model_v3.get_booster().feature_names or []
                 if 'usage_rate_roll3' in trained_features:
                     self._feature_version = 'v3'
                     self._feature_cols    = FEATURE_COLS_V3
@@ -717,10 +715,18 @@ class PredictionEngine:
         row['opp_avg_rebounds']         = opp_def['opp_avg_rebounds']         if not opp_def.isna().all() else 31.3
         row['opp_avg_turnovers_forced'] = opp_def['opp_avg_turnovers_forced'] if not opp_def.isna().all() else 12.0
 
-        try:
-            row['opponent_encoded'] = self.le_opponent.transform([opponent])[0]
-        except ValueError:
-            row['opponent_encoded'] = 0
+        # ── BartTorvik V4 features for player model ───────────────────────────
+        # opp_adj_d / opp_adj_em / opp_tempo needed by CatBoost models
+        if 'opp_adj_d' in self._feature_cols or 'opp_adj_d' in self._minutes_cols:
+            opp_adv_player = self._get_opp_advanced_stats(opponent)
+            row['opp_adj_d']  = opp_adv_player['adj_d']  if opp_adv_player else 100.0
+            row['opp_adj_em'] = opp_adv_player['adj_em'] if opp_adv_player else 0.0
+            row['opp_tempo']  = opp_adv_player['tempo']  if opp_adv_player else 68.0
+
+        # ── CatBoost uses raw string categoricals — ensure they're in the row ─
+        row['player_name'] = str(player_name)
+        row['opponent']    = str(opponent)
+        # position comes from player_data; already a string
 
         # ── Override context features ──────────────────────────────────────────
         row['is_home']         = int(is_home)
@@ -731,7 +737,7 @@ class PredictionEngine:
             row['starter'] = int(starter)
 
         # ── Step 1: Predict minutes ────────────────────────────────────────────
-        X_min = pd.DataFrame([row[self._minutes_cols]])
+        X_min = pd.DataFrame([{k: row[k] for k in self._minutes_cols if k in row}])
         pred_minutes = max(0.0, float(self.minutes_model.predict(X_min)[0]) * minutes_scale)
         # Cap at 40 minutes (OT rarely changes predictions materially)
         pred_minutes = min(pred_minutes, 40.0)
@@ -742,7 +748,7 @@ class PredictionEngine:
         row['predicted_minutes'] = pred_minutes
 
         # ── Step 3: Predict points/rebounds/assists ────────────────────────────
-        X_pts = pd.DataFrame([row[self._feature_cols]])
+        X_pts = pd.DataFrame([{k: row[k] for k in self._feature_cols if k in row}])
         model = self.model_G if row.get('position', 'G') == 'G' else self.model_FC
         pred_points   = max(0.0, float(model.predict(X_pts)[0]))
         pred_rebounds = max(0.0, float(self.reb_model.predict(X_pts)[0]))
@@ -807,7 +813,18 @@ class PredictionEngine:
         else:
             opp_off_eff_roll3 = global_opp_eff
 
+        # Look up BartTorvik V4 features for opponent model
+        opp_adv = self._get_opp_advanced_stats(opponent)
+        opp_adj_d  = opp_adv['adj_d']  if opp_adv else 100.0
+        opp_adj_em = opp_adv['adj_em'] if opp_adv else 0.0
+        opp_tempo  = opp_adv['tempo']  if opp_adv else 68.0
+
         opp_input = pd.DataFrame([{
+            # V4 BartTorvik features (replace net_rank after retraining)
+            'opp_adj_d':           opp_adj_d,
+            'opp_adj_em':          opp_adj_em,
+            'opp_tempo':           opp_tempo,
+            # Legacy — kept for backward compat with pre-retrain model
             'net_rank':            int(net_rank),
             'uk_is_home':          int(is_home),
             'opp_pts_roll3':       opp_pts_roll3,
@@ -824,9 +841,15 @@ class PredictionEngine:
             'opp_off_eff_roll3':   opp_off_eff_roll3,
         }])
 
-        # Match features to whatever the model was trained with
-        model_features = self.opp_model_v4.get_booster().feature_names
-        opp_input = opp_input[[c for c in model_features if c in opp_input.columns]]
+        # Match features to whatever the model was trained with (XGBoost or CatBoost)
+        try:
+            if hasattr(self.opp_model_v4, 'feature_names_'):
+                model_features = list(self.opp_model_v4.feature_names_)
+            else:
+                model_features = self.opp_model_v4.get_booster().feature_names
+            opp_input = opp_input[[c for c in model_features if c in opp_input.columns]]
+        except Exception:
+            pass
         return round(float(self.opp_model_v4.predict(opp_input)[0]), 1)
 
     def _win_prob_logistic(self, projections, opp_score, is_home,

@@ -760,5 +760,26 @@
         "mtime": "2026-03-11 15:53:47"
       }
     }
-  }
+  },
+  "runs": [
+    {
+      "timestamp": "2026-03-11T23:02:20.095421",
+      "framework": "catboost",
+      "features": "V9 (BartTorvik opp_adj_d + opp_adj_em + opp_tempo, raw cat features)",
+      "player_models": {
+        "points_guard": "model_G.joblib",
+        "points_fc": "model_FC.joblib",
+        "minutes": "minutes_model.joblib",
+        "rebounds": "reb_model.joblib",
+        "assists": "ast_model.joblib"
+      },
+      "opp_model": "opp_model_v4.joblib (BartTorvik V4)",
+      "cat_features": [
+        "player_name",
+        "position",
+        "opponent"
+      ],
+      "notes": "CatBoost replaces XGBoost for all player models. BartTorvik adj_d/adj_em/tempo added to opponent model. LabelEncoder removed."
+    }
+  ]
 }

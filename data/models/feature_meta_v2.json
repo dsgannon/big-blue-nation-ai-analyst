@@ -27,6 +27,9 @@
     "uk_fg_pct_vs_opp_hist",
     "uk_three_pct_vs_opp_hist",
     "uk_win_rate_roll10",
+    "opp_adj_d",
+    "opp_adj_em",
+    "opp_tempo",
     "is_home",
     "neutral_site",
     "conf_game",
@@ -39,9 +42,9 @@
     "opp_avg_points_allowed",
     "opp_avg_rebounds",
     "opp_avg_turnovers_forced",
-    "player_encoded",
-    "position_encoded",
-    "opponent_encoded",
+    "player_name",
+    "position",
+    "opponent",
     "predicted_minutes"
   ],
   "MINUTES_FEATURES_V2": [
@@ -64,11 +67,13 @@
     "season_segment",
     "days_rest",
     "is_back_to_back",
-    "player_encoded",
-    "position_encoded"
+    "player_name",
+    "position"
   ],
   "OPP_FEATURES_V2": [
-    "net_rank",
+    "opp_adj_d",
+    "opp_adj_em",
+    "opp_tempo",
     "uk_is_home",
     "opp_pts_roll3",
     "opp_pts_roll5",
@@ -88,5 +93,15 @@
     "uk_is_home",
     "neutral_site"
   ],
-  "uk_bpi_defense": 7.4
+  "uk_bpi_defense": 7.4,
+  "CAT_FEATURES_PLAYER": [
+    "player_name",
+    "position",
+    "opponent"
+  ],
+  "CAT_FEATURES_MINUTES": [
+    "player_name",
+    "position"
+  ],
+  "model_framework": "catboost"
 }
