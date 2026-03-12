@@ -413,7 +413,6 @@ with st.sidebar:
     opponents = load_opponents()
 
     # Auto-select next opponent
-    # Auto-select next opponent
     if next_game:
         auto_opponent = next_game.get('away_team') \
             if next_game.get('home_team') == 'Kentucky Wildcats' \
@@ -422,6 +421,28 @@ with st.sidebar:
         auto_is_home  = next_game.get('home_team') == 'Kentucky Wildcats' and not auto_neutral
         auto_venue    = next_game.get('venue_name', '')
         auto_date     = next_game.get('date', '')[:10]
+
+        # Auto-detect days rest and back-to-back from games table
+        try:
+            import sqlite3 as _sq
+            from datetime import datetime as _dt
+            _dconn = _sq.connect(DB_PATH)
+            _prev  = _dconn.execute("""
+                SELECT date FROM games
+                WHERE (home_team = 'Kentucky Wildcats' OR away_team = 'Kentucky Wildcats')
+                  AND date < ?
+                ORDER BY date DESC LIMIT 1
+            """, (auto_date,)).fetchone()
+            _dconn.close()
+            if _prev:
+                _prev_dt  = _dt.strptime(_prev[0][:10], '%Y-%m-%d')
+                _game_dt  = _dt.strptime(auto_date, '%Y-%m-%d')
+                auto_days_rest = max(1, (_game_dt - _prev_dt).days)
+            else:
+                auto_days_rest = 3
+        except Exception:
+            auto_days_rest = 3
+        auto_b2b = auto_days_rest <= 1
 
         # Format date nicely
         from datetime import datetime, timezone
@@ -453,9 +474,11 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
     else:
-        auto_opponent = opponents[0] if opponents else ''
-        auto_is_home  = False
-        auto_neutral  = False
+        auto_opponent  = opponents[0] if opponents else ''
+        auto_is_home   = False
+        auto_neutral   = False
+        auto_days_rest = 3
+        auto_b2b       = False
 
     default_opp_idx = opponents.index(auto_opponent) \
         if auto_opponent in opponents else 0
@@ -476,8 +499,8 @@ with st.sidebar:
     opp_bpi = st.number_input("Opp BPI", min_value=0.0, max_value=35.0,
                              value=float(auto_bpi), step=0.1)
 
-    days_rest = st.slider("Days Rest", 1, 10, 3)
-    is_b2b    = st.checkbox("Back-to-Back", value=False)
+    days_rest = st.slider("Days Rest", 1, 10, auto_days_rest)
+    is_b2b    = st.checkbox("Back-to-Back", value=auto_b2b)
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-title">⚠️ Injuries / Out</div>',
