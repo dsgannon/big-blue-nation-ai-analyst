@@ -311,7 +311,7 @@ def load_validation_data():
 
 # ── Sidebar controls ───────────────────────────────────────────────────────────
 # Auto-load next game
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def load_next_game():
     try:
         sys.path.insert(0, BASE_DIR)
@@ -521,7 +521,7 @@ with st.sidebar:
         st.caption("Odds not yet available.")
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    run_btn = st.button("🔮 Run Prediction", use_container_width=True, type="primary")
+    run_btn = st.button("🔮 Run Prediction", width="stretch", type="primary")
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
@@ -583,8 +583,8 @@ st.markdown(f"""
 
 
 # ── Main content ───────────────────────────────────────────────────────────────
-tab_game, tab_players, tab_sim, tab_models, tab_gamelog = st.tabs(
-    ["🏀 Game Predictions", "👥 Player Predictions", "🎲 Simulation", "📊 Model Insights", "📋 Season Log"]
+tab_game, tab_players, tab_sim, tab_models, tab_gamelog, tab_chat = st.tabs(
+    ["🏀 Game Predictions", "👥 Player Predictions", "🎲 Simulation", "📊 Model Insights", "📋 Season Log", "💬 AI Analyst"]
 )
 if 'result' not in st.session_state:
     st.session_state.result = None
@@ -685,7 +685,7 @@ with tab_game:
             height=200, margin=dict(t=40, b=10, l=20, r=20),
             paper_bgcolor='#f8faff', font_color='#1a2540',
         )
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
 
     diff_color = "#4caf7d" if result['point_diff'] >= 0 else "#e05c5c"
     diff_sign  = "+" if result['point_diff'] >= 0 else ""
@@ -734,7 +734,7 @@ with tab_players:
             'Must-Do Threshold': must_do,
         })
     checklist_df = pd.DataFrame(checklist_data)
-    st.dataframe(checklist_df, use_container_width=True, hide_index=True, column_config={
+    st.dataframe(checklist_df, width="stretch", hide_index=True, column_config={
         'Status':            st.column_config.TextColumn(width='small'),
         'Player':            st.column_config.TextColumn(width='medium'),
         'Proj PTS':          st.column_config.TextColumn(width='small'),
@@ -782,11 +782,11 @@ with tab_players:
     }
 
     st.caption("STARTERS  ·  80% prediction interval shown in parentheses")
-    st.dataframe(build_df(starters), use_container_width=True,
+    st.dataframe(build_df(starters), width="stretch",
                  hide_index=True, column_config=col_cfg)
 
     st.caption("BENCH")
-    st.dataframe(build_df(bench), use_container_width=True,
+    st.dataframe(build_df(bench), width="stretch",
                  hide_index=True, column_config=col_cfg)
 
     # Team totals
@@ -868,7 +868,7 @@ with tab_players:
                         showticklabels=False,
                         zeroline=False,
                     )
-            st.plotly_chart(fig_sp, use_container_width=True, config={'displayModeBar': False})
+            st.plotly_chart(fig_sp, width="stretch", config={'displayModeBar': False})
             st.caption("Blue line = last 8 games · Diamond = today's projection · Dotted = season avg")
     else:
         st.caption("No game history yet for sparklines.")
@@ -929,7 +929,7 @@ with tab_sim:
             yaxis=dict(title='UK Win %', gridcolor='#dce6f5', range=[0, 100]),
             showlegend=False,
         )
-        st.plotly_chart(fig_curve, use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(fig_curve, width="stretch", config={'displayModeBar': False})
         if breakeven:
             st.caption(f"Break-even: opponent BPI ≈ **{breakeven}** · Current sim: **{sim_win_prob:.1f}%**")
 
@@ -1114,7 +1114,7 @@ with tab_models:
                 xaxis=dict(title='Importance', gridcolor='#dce6f5', showgrid=True),
                 yaxis=dict(gridcolor='#dce6f5'),
             )
-            st.plotly_chart(fig_fi, use_container_width=True, config={'displayModeBar': False})
+            st.plotly_chart(fig_fi, width="stretch", config={'displayModeBar': False})
             st.caption("Average importance across Guard and F/C models. Darker = higher impact on projected points.")
         except Exception as _e:
             st.info(f"Feature importance unavailable: {_e}")
@@ -1179,7 +1179,7 @@ with tab_models:
                 yaxis=dict(title='Pred − Actual', gridcolor='#dce6f5'),
                 legend=dict(font=dict(size=10), bgcolor='rgba(0,0,0,0)'),
             )
-            st.plotly_chart(fig_acc, use_container_width=True, config={'displayModeBar': False})
+            st.plotly_chart(fig_acc, width="stretch", config={'displayModeBar': False})
             uk_mae  = acc_df['uk_error'].abs().mean()
             opp_mae = acc_df['opp_error'].abs().mean()
             st.caption(f"UK MAE: {uk_mae:.1f} pts · Opp MAE: {opp_mae:.1f} pts · n={len(acc_df)}")
@@ -1237,7 +1237,7 @@ with tab_models:
                     yaxis=dict(title='Poss', gridcolor='#dce6f5', range=[55, 90]),
                     xaxis=dict(gridcolor='#dce6f5', tickformat='%b %d'),
                 )
-                st.plotly_chart(fig_pace, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_pace, width="stretch", config={'displayModeBar': False})
 
             with eff_col:
                 eff_colors = ['#1a7a4a' if v >= eff_avg else '#c0392b'
@@ -1262,7 +1262,7 @@ with tab_models:
                     yaxis=dict(title='Pts/100', gridcolor='#dce6f5'),
                     xaxis=dict(gridcolor='#dce6f5', tickformat='%b %d'),
                 )
-                st.plotly_chart(fig_eff, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_eff, width="stretch", config={'displayModeBar': False})
         else:
             st.caption("Not enough games yet for trend charts.")
     except Exception as _e:
@@ -1292,7 +1292,7 @@ with tab_models:
             )
             st.dataframe(
                 net_hist[['Date', 'NET Rank', 'Change']],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     'Date':     st.column_config.TextColumn(width='medium'),
@@ -1312,7 +1312,7 @@ with tab_models:
         st.markdown('<hr class="divider">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Post-Game Validation</div>',
                 unsafe_allow_html=True)
-        st.dataframe(val_df, use_container_width=True, hide_index=True)
+        st.dataframe(val_df, width="stretch", hide_index=True)
 
 # ── Season Game Log Tab (Item 9) ───────────────────────────────────────────────
 with tab_gamelog:
@@ -1373,13 +1373,91 @@ with tab_gamelog:
 
         st.dataframe(
             log_display.style
-                .applymap(_color_wl, subset=['W/L'])
-                .applymap(_color_margin, subset=['Margin']),
-            use_container_width=True,
+                .map(_color_wl, subset=['W/L'])
+                .map(_color_margin, subset=['Margin']),
+            width="stretch",
             hide_index=True,
         )
     else:
         st.info("No completed games yet this season.")
+
+
+# ── Chat tab ───────────────────────────────────────────────────────────────────
+with tab_chat:
+    from src.agents.chat_agent import ask_analyst
+
+    st.markdown('<p class="section-title">AI Analyst Chat</p>', unsafe_allow_html=True)
+    st.markdown(
+        "<p style='color:#4a6080;font-size:0.9rem;margin-bottom:1rem'>"
+        "Ask me anything about Kentucky Basketball — player trends, game results, "
+        "standings, prop thresholds, and more. I'll query the live database to answer.</p>",
+        unsafe_allow_html=True,
+    )
+
+    # Seed suggested questions
+    SUGGESTIONS = [
+        "How has Otega Oweh been trending lately?",
+        "Who are UK's leading scorers this season?",
+        "What is UK's NET rank history this season?",
+        "How are we doing in SEC play?",
+        "What are the prop thresholds for Collin Chandler?",
+        "When is the next game?",
+    ]
+
+    # Session state for chat
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []   # list of {role, content} dicts
+    if "chat_api_history" not in st.session_state:
+        st.session_state.chat_api_history = []  # full API message list
+
+    # Suggestion buttons (only show when no conversation yet)
+    if not st.session_state.chat_messages:
+        st.markdown("**Try asking:**")
+        cols = st.columns(3)
+        for i, suggestion in enumerate(SUGGESTIONS):
+            if cols[i % 3].button(suggestion, key=f"suggest_{i}", use_container_width=True):
+                st.session_state._pending_chat_input = suggestion
+                st.rerun()
+
+    # Render existing conversation
+    for msg in st.session_state.chat_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # Handle pending suggestion
+    pending = st.session_state.pop("_pending_chat_input", None)
+
+    # Chat input
+    user_input = st.chat_input("Ask about UK Basketball...") or pending
+
+    if user_input:
+        # Display user message
+        st.session_state.chat_messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        # Call the analyst
+        with st.chat_message("assistant"):
+            with st.spinner("Querying the database..."):
+                try:
+                    reply, updated_history = ask_analyst(
+                        user_input,
+                        st.session_state.chat_api_history,
+                    )
+                    st.session_state.chat_api_history = updated_history
+                    st.session_state.chat_messages.append({"role": "assistant", "content": reply})
+                    st.markdown(reply)
+                except Exception as e:
+                    error_msg = f"Sorry, something went wrong: {e}"
+                    st.session_state.chat_messages.append({"role": "assistant", "content": error_msg})
+                    st.error(error_msg)
+
+    # Clear conversation button
+    if st.session_state.chat_messages:
+        if st.button("🗑️ Clear conversation", key="clear_chat"):
+            st.session_state.chat_messages = []
+            st.session_state.chat_api_history = []
+            st.rerun()
 
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
