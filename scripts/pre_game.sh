@@ -67,6 +67,37 @@ neutral   = next_game.get('neutral_site', False)
 game_date = next_game.get('date', 'TBD')
 game_id   = next_game.get('id', '')
 
+# ── Auto-detect back-to-back and days rest from schedule ──────────────────
+import sqlite3
+from datetime import datetime, timezone
+
+def _parse_date(d):
+    for fmt in ('%Y-%m-%dT%H:%MZ', '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(d[:len(fmt)-1] if fmt.endswith('Z') else d[:10], fmt.replace('Z',''))
+        except ValueError:
+            continue
+    return None
+
+today = _parse_date(game_date) or datetime.now()
+_conn = sqlite3.connect(DB_PATH)
+_prev = _conn.execute("""
+    SELECT date FROM games
+    WHERE (home_team = 'Kentucky Wildcats' OR away_team = 'Kentucky Wildcats')
+      AND date < ?
+    ORDER BY date DESC LIMIT 1
+""", (game_date,)).fetchone()
+_conn.close()
+
+if _prev:
+    prev_date  = _parse_date(_prev[0])
+    days_rest  = max(1, (today - prev_date).days) if prev_date else 3
+else:
+    days_rest  = 3
+
+is_back_to_back = 1 if days_rest <= 1 else 0
+rest_label = "BACK-TO-BACK ⚠️" if is_back_to_back else f"{days_rest} days rest"
+
 # Get live NET rank and BPI for opponent
 from src.ingestion.espn_client import get_net_rankings, get_opponent_net_rank, get_opponent_bpi
 try:
@@ -90,16 +121,19 @@ print(f"  Opponent:  {opponent}")
 print(f"  Date:      {game_date}")
 location = 'Neutral' if neutral else ('Home' if is_home else 'Away')
 print(f"  Location:  {location} — {next_game.get('venue_name','')}")
+print(f"  Rest:      {rest_label}")
 if injuries:
     print(f"  Injuries:  {', '.join(injuries)}")
 print()
 
 engine = PredictionEngine()
 predict_kwargs = dict(
-    opponent  = opponent,
-    is_home   = is_home,
-    net_rank  = net_rank,
-    injuries  = injuries,
+    opponent        = opponent,
+    is_home         = is_home,
+    net_rank        = net_rank,
+    injuries        = injuries,
+    days_rest       = days_rest,
+    is_back_to_back = is_back_to_back,
 )
 if opp_bpi is not None:
     predict_kwargs['opp_bpi'] = float(opp_bpi)
