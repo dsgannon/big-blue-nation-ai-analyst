@@ -1,6 +1,11 @@
 import requests
 import json
+import os
+import sqlite3
 from datetime import datetime
+
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_DB_PATH  = os.path.join(_BASE_DIR, 'data', 'processed', 'kentucky_basketball.db')
 
 # Kentucky's team ID in ESPN's system
 KENTUCKY_TEAM_ID = "96"
@@ -357,48 +362,98 @@ def get_team_statistics():
     return stats
 
 
-def get_next_game():
-    """Get Kentucky's next scheduled game"""
-    url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/{KENTUCKY_TEAM_ID}"
-    response = requests.get(url)
-    data = response.json()
-    
-    next_events = data.get("team", {}).get("nextEvent", [])
-    if not next_events:
+def _next_game_from_db():
+    """Fallback: pull next unplayed game from the local DB."""
+    try:
+        conn = sqlite3.connect(_DB_PATH)
+        row = conn.execute("""
+            SELECT id, date, name, home_team, away_team, neutral_site, season_type
+            FROM games
+            WHERE status NOT IN ('Final', 'STATUS_FINAL')
+              AND date >= date('now', '-1 day')
+            ORDER BY date
+            LIMIT 1
+        """).fetchone()
+        conn.close()
+        if not row:
+            return None
+        game_id, date, name, home_team, away_team, neutral_site, season_type = row
+        return {
+            "id":           game_id,
+            "date":         date,
+            "name":         name,
+            "short_name":   name,
+            "season_type":  season_type,
+            "neutral_site": bool(neutral_site),
+            "venue_name":   None,
+            "venue_city":   None,
+            "venue_state":  None,
+            "home_team":    home_team,
+            "away_team":    away_team,
+            "network":      None,
+            "opponent_record": None,
+            "tickets_available": False,
+        }
+    except Exception:
         return None
-    
-    event = next_events[0]
-    competition = event.get("competitions", [{}])[0]
-    
-    competitors = competition.get("competitors", [])
-    home_team = next((c for c in competitors if c.get("homeAway") == "home"), {})
-    away_team = next((c for c in competitors if c.get("homeAway") == "away"), {})
-    
-    broadcasts = competition.get("broadcasts", [])
-    network = broadcasts[0].get("media", {}).get("shortName") if broadcasts else None
-    
-    venue = competition.get("venue", {})
-    
-    # Get opponent info
-    opponent = away_team if home_team.get("team", {}).get("id") == KENTUCKY_TEAM_ID else home_team
-    opp_record = opponent.get("records", [{}])[0].get("summary") if opponent.get("records") else None
 
-    return {
-        "id": event.get("id"),
-        "date": event.get("date"),
-        "name": event.get("name"),
-        "short_name": event.get("shortName"),
-        "season_type": event.get("seasonType", {}).get("name"),
-        "neutral_site": competition.get("neutralSite", False),
-        "venue_name": venue.get("fullName"),
-        "venue_city": venue.get("address", {}).get("city"),
-        "venue_state": venue.get("address", {}).get("state"),
-        "home_team": home_team.get("team", {}).get("displayName"),
-        "away_team": away_team.get("team", {}).get("displayName"),
-        "network": network,
-        "opponent_record": opp_record,
-        "tickets_available": competition.get("ticketsAvailable", False),
-    }
+
+def get_next_game():
+    """Get Kentucky's next scheduled game.
+    Queries ESPN API first; falls back to DB if ESPN returns a game already marked Final.
+    """
+    try:
+        url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/{KENTUCKY_TEAM_ID}"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+
+        next_events = data.get("team", {}).get("nextEvent", [])
+        if next_events:
+            event       = next_events[0]
+            game_id     = event.get("id")
+
+            # Validate: if our DB already has this game as Final, ESPN is stale
+            try:
+                conn = sqlite3.connect(_DB_PATH)
+                row  = conn.execute(
+                    "SELECT status FROM games WHERE id=?", (game_id,)
+                ).fetchone()
+                conn.close()
+                if row and row[0] in ('Final', 'STATUS_FINAL'):
+                    return _next_game_from_db()
+            except Exception:
+                pass
+
+            competition = event.get("competitions", [{}])[0]
+            competitors = competition.get("competitors", [])
+            home_team   = next((c for c in competitors if c.get("homeAway") == "home"), {})
+            away_team   = next((c for c in competitors if c.get("homeAway") == "away"), {})
+            broadcasts  = competition.get("broadcasts", [])
+            network     = broadcasts[0].get("media", {}).get("shortName") if broadcasts else None
+            venue       = competition.get("venue", {})
+            opponent    = away_team if home_team.get("team", {}).get("id") == KENTUCKY_TEAM_ID else home_team
+            opp_record  = opponent.get("records", [{}])[0].get("summary") if opponent.get("records") else None
+
+            return {
+                "id":           game_id,
+                "date":         event.get("date"),
+                "name":         event.get("name"),
+                "short_name":   event.get("shortName"),
+                "season_type":  event.get("seasonType", {}).get("name"),
+                "neutral_site": competition.get("neutralSite", False),
+                "venue_name":   venue.get("fullName"),
+                "venue_city":   venue.get("address", {}).get("city"),
+                "venue_state":  venue.get("address", {}).get("state"),
+                "home_team":    home_team.get("team", {}).get("displayName"),
+                "away_team":    away_team.get("team", {}).get("displayName"),
+                "network":      network,
+                "opponent_record": opp_record,
+                "tickets_available": competition.get("ticketsAvailable", False),
+            }
+    except Exception:
+        pass
+
+    return _next_game_from_db()
 
 def get_record_splits():
     """Get Kentucky's home/away/overall record splits"""
