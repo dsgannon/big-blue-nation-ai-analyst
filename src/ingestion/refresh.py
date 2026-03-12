@@ -32,7 +32,9 @@ from ingestion.database import (
     save_opponent_stats,
     save_opponent_bpi_history,
     save_net_rankings_history,
+    save_team_advanced_stats,
 )
+from ingestion.barttorvik_client import get_all_team_stats
 
 # Set up logging so we have a record of every refresh
 logging.basicConfig(
@@ -107,6 +109,15 @@ def _refresh_net_rankings():
     return net_rankings
 
 
+def _refresh_barttorvik():
+    """Snapshot BartTorvik advanced stats for all D1 teams."""
+    stats = get_all_team_stats(year=2026)
+    if stats:
+        save_team_advanced_stats(stats)
+        log.info(f"BartTorvik: saved {len(stats)} team entries")
+    return stats
+
+
 def run_refresh():
     """Full data refresh — fetches everything from ESPN and saves to database"""
     start = datetime.now()
@@ -173,6 +184,10 @@ def run_refresh():
         # NET rankings snapshot
         log.info("Refreshing NET rankings history...")
         _refresh_net_rankings()
+
+        # BartTorvik advanced stats snapshot
+        log.info("Refreshing BartTorvik advanced stats...")
+        _refresh_barttorvik()
 
         # Recompute thresholds with latest game data
         log.info("Recomputing player thresholds...")

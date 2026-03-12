@@ -124,6 +124,29 @@ MINUTES_FEATURES_V3 = [
     'player_encoded', 'position_encoded',
 ]
 
+# ── V4 feature lists — active after retraining with BartTorvik adj_d + tempo ──
+# opp_adj_d:    opponent's adjusted defensive efficiency (lower = tougher defense)
+# opp_adj_em:   opponent's overall efficiency margin (proxy for opponent quality)
+# opp_tempo:    opponent's adjusted pace (possessions/40 min); higher = more possessions
+# These replace net_rank in OPP_FEATURES and add context to player models.
+OPP_FEATURES_V4 = [
+    'opp_adj_d',      # replaces net_rank — direct measure of defensive quality
+    'opp_adj_em',     # opponent overall quality
+    'opp_tempo',      # pace impact on total possessions
+    'uk_is_home',
+    'opp_pts_roll3', 'opp_pts_roll5',
+    'opp_fg_pct_roll3', 'opp_three_pct_roll3', 'opp_reb_roll3',
+    'uk_def_roll3', 'uk_def_roll5', 'uk_def_season',
+    'uk_bpi_defense',
+]
+
+WIN_PROB_FEATURES_V4 = [
+    'pts_diff',
+    'opp_adj_em',   # replaces/adds to pts_diff — analytically stronger signal
+    'uk_is_home',
+    'neutral_site',
+]
+
 # Kentucky constants (update each season from team_metrics table)
 UK_BPI = 16.6
 

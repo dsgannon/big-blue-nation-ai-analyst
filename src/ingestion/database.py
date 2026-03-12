@@ -229,7 +229,30 @@ def create_tables():
             date TEXT,
             team_name TEXT,
             net_rank INTEGER,
-            updated_at TEXT
+            updated_at TEXT,
+            UNIQUE(season, date, team_name)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS team_advanced_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season TEXT NOT NULL,
+            date TEXT NOT NULL,
+            team_name TEXT NOT NULL,
+            conference TEXT,
+            record TEXT,
+            t_rank INTEGER,
+            adj_o REAL,
+            adj_o_rank INTEGER,
+            adj_d REAL,
+            adj_d_rank INTEGER,
+            adj_em REAL,
+            barthag REAL,
+            luck REAL,
+            tempo REAL,
+            updated_at TEXT,
+            UNIQUE(season, date, team_name)
         )
     """)
 
@@ -461,13 +484,45 @@ def save_net_rankings_history(net_rankings: dict, season=CURRENT_SEASON):
 
     for team_name, net_rank in net_rankings.items():
         cursor.execute("""
-            INSERT INTO net_rankings_history (season, date, team_name, net_rank, updated_at)
+            INSERT OR IGNORE INTO net_rankings_history (season, date, team_name, net_rank, updated_at)
             VALUES (?, ?, ?, ?, ?)
         """, (season, today, team_name, int(net_rank), now))
 
     conn.commit()
     conn.close()
     print(f"✅ Saved {len(net_rankings)} NET rankings to history")
+
+
+def save_team_advanced_stats(stats_list: list[dict], season=CURRENT_SEASON):
+    """Snapshot BartTorvik advanced stats for all teams."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    today = now[:10]
+    saved = 0
+
+    for s in stats_list:
+        cursor.execute("""
+            INSERT OR IGNORE INTO team_advanced_stats
+            (season, date, team_name, conference, record, t_rank,
+             adj_o, adj_o_rank, adj_d, adj_d_rank, adj_em,
+             barthag, luck, tempo, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            season, today,
+            s.get("team_name"), s.get("conference"), s.get("record"),
+            s.get("t_rank"),
+            s.get("adj_o"), s.get("adj_o_rank"),
+            s.get("adj_d"), s.get("adj_d_rank"),
+            s.get("adj_em"),
+            s.get("barthag"), s.get("luck"), s.get("tempo"),
+            now,
+        ))
+        saved += cursor.rowcount
+
+    conn.commit()
+    conn.close()
+    print(f"✅ Saved {saved} advanced stat entries (BartTorvik)")
 
 
 def save_opponent_stats(opp_stats_list, season=CURRENT_SEASON):

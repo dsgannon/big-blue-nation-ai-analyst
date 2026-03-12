@@ -14,12 +14,24 @@ import anthropic
 from dotenv import load_dotenv
 load_dotenv()
 
-DB_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "data", "processed", "kentucky_basketball.db"
-)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+DB_PATH = os.path.join(BASE_DIR, "data", "processed", "kentucky_basketball.db")
+HISTORY_PATH = os.path.join(BASE_DIR, "data", "history", "uk_basketball_history.md")
 
 CURRENT_SEASON = "2025-26"
+
+
+def _load_history_kb() -> str:
+    """Load the UK basketball history knowledge base."""
+    try:
+        with open(HISTORY_PATH, "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
+
+
+HISTORY_KB = _load_history_kb()
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 
@@ -225,6 +237,28 @@ def query_next_game() -> str:
         return f"Error: {e}"
 
 
+def query_opponent_advanced_stats(team_name: str) -> str:
+    """Return BartTorvik advanced stats for any D1 team (adj_o, adj_d, adj_em, tempo, etc.)."""
+    try:
+        conn = _conn()
+        cur = conn.execute("""
+            SELECT team_name, conference, record, t_rank,
+                   adj_o, adj_o_rank, adj_d, adj_d_rank, adj_em,
+                   barthag, luck, tempo, date
+            FROM team_advanced_stats
+            WHERE team_name LIKE ?
+            ORDER BY date DESC
+            LIMIT 1
+        """, (f"%{team_name}%",))
+        rows = _rows_to_dict(cur)
+        conn.close()
+        if not rows:
+            return f"No advanced stats found for '{team_name}'."
+        return json.dumps(rows[0])
+    except Exception as e:
+        return f"Error: {e}"
+
+
 def query_player_comparison(player_names: list[str]) -> str:
     """Compare season averages across multiple players."""
     results = []
@@ -339,6 +373,17 @@ TOOLS = [
         "description": "Get UK's scoring leaders this season — top players sorted by PPG. Use for 'who leads the team in scoring' type questions.",
         "input_schema": {"type": "object", "properties": {}}
     },
+    {
+        "name": "query_opponent_advanced_stats",
+        "description": "Get BartTorvik advanced stats for any college basketball team — adjusted offensive/defensive efficiency (adj_o, adj_d), efficiency margin (adj_em), tempo/pace, and luck rating. Use for questions like 'how good is Missouri's defense?' or 'who has the best offense in the SEC?' or 'how does UK match up analytically?'",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "team_name": {"type": "string", "description": "Team name or partial name (e.g. 'Missouri', 'Florida', 'Duke')"}
+            },
+            "required": ["team_name"]
+        }
+    },
 ]
 
 TOOL_DISPATCH: dict[str, Any] = {
@@ -353,20 +398,31 @@ TOOL_DISPATCH: dict[str, Any] = {
     "query_player_thresholds": lambda inp: query_player_thresholds(inp["player_name"]),
     "query_next_game": lambda inp: query_next_game(),
     "query_scoring_leaders": lambda inp: query_scoring_leaders(),
+    "query_opponent_advanced_stats": lambda inp: query_opponent_advanced_stats(inp["team_name"]),
 }
 
-SYSTEM_PROMPT = """You are the Big Blue Nation AI Analyst — a sharp, data-driven assistant for Kentucky Wildcats Basketball. You have access to tools that query a live database of UK's stats, game results, player performance, and team metrics.
+def build_system_prompt() -> str:
+    history_section = (
+        f"\n\n---\n## Kentucky Basketball History Reference\n\n{HISTORY_KB}\n---\n"
+        if HISTORY_KB else ""
+    )
+    return f"""You are the Big Blue Nation AI Analyst — a sharp, data-driven assistant AND passionate historian for Kentucky Wildcats Basketball. You have two modes:
 
-Guidelines:
-- Always use the provided tools to fetch real data before answering — never make up numbers.
-- Be conversational but precise. Back every claim with data.
-- Speak as a knowledgeable UK fan who also understands the analytics deeply.
-- When a player is trending well or poorly, highlight the pattern with specific numbers.
-- Keep answers concise but insightful — two to four short paragraphs is usually ideal.
-- If asked about projections or upcoming games, note that the dashboard has full pre-game predictions.
-- The current season is 2025-26.
-- Players on the roster: Otega Oweh, Denzel Aberdeen, Collin Chandler, Malachi Moreno, Andrija Jelavic (starters); Dioubate, Trent Noah, Brandon Garrison, Jasper Johnson, Kam Williams, Jayden Quaintance, Jaland Lowe (bench).
-"""
+**CURRENT SEASON MODE** — For questions about this season's stats, games, players, standings, or upcoming matchups: use the provided database query tools to fetch real data, then give a data-backed answer.
+
+**HISTORY MODE** — For questions about Kentucky basketball history, legendary players, championships, famous games, coaches, or records: draw on the Kentucky Basketball History Reference below. Tell the stories with passion and detail. You are a storyteller and historian — bring these moments to life.
+
+**Rules:**
+- For current season questions: always query the database first, never make up numbers.
+- For history questions: use the Knowledge Base as ground truth — do not hallucinate specific stats, dates, or scores beyond what's documented there.
+- When a question spans both (e.g., "how does Oweh compare to past UK guards?"), use tools for current data AND the KB for historical context.
+- Be conversational, specific, and enthusiastic. Speak as a lifelong UK fan who knows the history cold.
+- Keep answers focused — 2-4 paragraphs for most questions, longer for rich historical stories.
+- For projections and full pre-game analysis, mention the dashboard's Game Predictions tab.
+- The current season is 2025-26. Head coach is Mark Pope (second season).
+{history_section}"""
+
+SYSTEM_PROMPT = build_system_prompt()
 
 
 # ── Main entry point ────────────────────────────────────────────────────────────
@@ -389,7 +445,7 @@ def ask_analyst(
     while True:
         with client.messages.stream(
             model="claude-opus-4-6",
-            max_tokens=2048,
+            max_tokens=4096,
             thinking={"type": "adaptive"},
             system=SYSTEM_PROMPT,
             tools=TOOLS,

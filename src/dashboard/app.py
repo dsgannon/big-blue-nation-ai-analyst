@@ -1394,14 +1394,20 @@ with tab_chat:
         unsafe_allow_html=True,
     )
 
-    # Seed suggested questions
+    # Seed suggested questions — mix of current season and history
     SUGGESTIONS = [
         "How has Otega Oweh been trending lately?",
         "Who are UK's leading scorers this season?",
-        "What is UK's NET rank history this season?",
+        "Tell me the story of the 1992 Laettner game",
         "How are we doing in SEC play?",
+        "Who is the greatest player in UK history?",
+        "Tell me about Anthony Davis's 2012 championship run",
         "What are the prop thresholds for Collin Chandler?",
+        "How good was Adolph Rupp?",
+        "How does our defense compare to Missouri analytically?",
         "When is the next game?",
+        "Tell me about the 38-1 team",
+        "Who has UK produced in the NBA Draft?",
     ]
 
     # Session state for chat
@@ -1413,9 +1419,9 @@ with tab_chat:
     # Suggestion buttons (only show when no conversation yet)
     if not st.session_state.chat_messages:
         st.markdown("**Try asking:**")
-        cols = st.columns(3)
+        cols = st.columns(4)
         for i, suggestion in enumerate(SUGGESTIONS):
-            if cols[i % 3].button(suggestion, key=f"suggest_{i}", use_container_width=True):
+            if cols[i % 4].button(suggestion, key=f"suggest_{i}", use_container_width=True):
                 st.session_state._pending_chat_input = suggestion
                 st.rerun()
 
