@@ -1132,21 +1132,22 @@ with tab_models:
             <tr><th>Model</th><th>MAE</th><th>Baseline</th><th>Improvement</th></tr>
         </thead>
         <tbody>
-          <tr><td>Points — Guards</td><td>4.18 pts</td><td>5.71 pts</td><td class="val-good">+1.53</td></tr>
-          <tr><td>Points — F/C</td><td>3.19 pts</td><td>3.82 pts</td><td class="val-good">+0.63</td></tr>
-          <tr><td>Player Rebounds</td><td>1.74 reb</td><td>2.02 reb</td><td class="val-good">+0.28</td></tr>
-          <tr><td>Player Assists</td><td>1.21 ast</td><td>1.50 ast</td><td class="val-good">+0.29</td></tr>
-          <tr><td>Player Minutes</td><td>4.82 min</td><td>7.86 min</td><td class="val-good">+3.04</td></tr>
-          <tr><td>Opponent Score</td><td>7.89 pts</td><td>9.07 pts</td><td class="val-good">+1.18</td></tr>
-          <tr><td>Win Probability</td><td>86.6% acc</td><td>—</td><td class="val-good">CV</td></tr>
+          <tr><td>Points — Guards</td><td>4.96 pts</td><td>6.54 pts</td><td class="val-good">+1.58</td></tr>
+          <tr><td>Points — F/C</td><td>3.58 pts</td><td>3.72 pts</td><td class="val-good">+0.14</td></tr>
+          <tr><td>Player Rebounds</td><td>1.67 reb</td><td>2.32 reb</td><td class="val-good">+0.65</td></tr>
+          <tr><td>Player Assists</td><td>1.20 ast</td><td>1.54 ast</td><td class="val-good">+0.34</td></tr>
+          <tr><td>Player Minutes</td><td>5.02 min</td><td>8.04 min</td><td class="val-good">+3.02</td></tr>
+          <tr><td>Opponent Score</td><td>7.57 pts</td><td>9.07 pts</td><td class="val-good">+1.50</td></tr>
+          <tr><td>Win Probability</td><td>94.1% acc</td><td>—</td><td class="val-good">Brier 0.060</td></tr>
         </tbody>
         </table>
         <div style="font-size:0.72rem;color:#6080a8;margin-top:0.6rem">
-          Features: rolling avgs · temporal decay · hot streak · pace · off/def efficiency ·
-          BPI · SOS · usage rate · win trajectory
+          CatBoost models · rolling avgs · temporal decay · hot streak · pace · off/def efficiency ·
+          BPI · SOS · usage rate · win trajectory · BartTorvik adj_d / adj_em / tempo
         </div>
         <div style="font-size:0.72rem;color:#6080a8;margin-top:0.3rem">
-          NET rank used in opponent score model. Player models use opp_avg_points_allowed as defensive proxy.
+          Opponent model uses BartTorvik adjusted defensive efficiency (replaces NET rank).
+          Player/position/opponent handled as native categorical features.
         </div>
         """, unsafe_allow_html=True)
 
@@ -1317,6 +1318,103 @@ with tab_models:
         st.markdown('<div class="section-title">Post-Game Validation</div>',
                 unsafe_allow_html=True)
         st.dataframe(val_df, width="stretch", hide_index=True)
+
+    # ── Win Probability Calibration ────────────────────────────────────────────
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Win Probability Calibration</div>',
+            unsafe_allow_html=True)
+    try:
+        import scipy.stats as _scipy_stats
+
+        conn = sqlite3.connect(DB_PATH)
+        _cal_games = pd.read_sql("""
+            SELECT home_team, away_team, home_score, away_score, neutral_site
+            FROM games
+            WHERE home_score IS NOT NULL AND away_score IS NOT NULL
+              AND season IN ('2024-25','2025-26')
+        """, conn)
+        conn.close()
+
+        _cal_games['home_score']  = pd.to_numeric(_cal_games['home_score'],  errors='coerce')
+        _cal_games['away_score']  = pd.to_numeric(_cal_games['away_score'],  errors='coerce')
+        _cal_games = _cal_games.dropna(subset=['home_score','away_score'])
+        _cal_games['neutral_site'] = _cal_games['neutral_site'].fillna(0).astype(int)
+        _cal_games['uk_is_home'] = (_cal_games['home_team'] == 'Kentucky Wildcats').astype(int)
+        _cal_games['uk_score']   = np.where(_cal_games['uk_is_home']==1, _cal_games['home_score'], _cal_games['away_score'])
+        _cal_games['opp_score']  = np.where(_cal_games['uk_is_home']==1, _cal_games['away_score'], _cal_games['home_score'])
+        _cal_games['margin']     = _cal_games['uk_score'] - _cal_games['opp_score']
+        _cal_games['uk_won']     = (_cal_games['margin'] > 0).astype(int)
+
+        _CBB_SIGMA = 11.0
+        _HOME_ADV  = 3.5
+        def _wp(margin, is_home, neutral):
+            adj = 0.0 if neutral else (_HOME_ADV if is_home else -_HOME_ADV)
+            return float(_scipy_stats.norm.cdf((margin + adj) / _CBB_SIGMA))
+
+        _cal_games['win_prob'] = _cal_games.apply(
+            lambda r: _wp(r['margin'], r['uk_is_home'], r['neutral_site']), axis=1)
+
+        _bins   = [0, 0.30, 0.45, 0.55, 0.65, 0.75, 0.85, 1.01]
+        _labels = ['<30%','30–45%','45–55%','55–65%','65–75%','75–85%','>85%']
+        _cal_games['bucket'] = pd.cut(_cal_games['win_prob'], bins=_bins, labels=_labels, right=False)
+        _cal = (_cal_games.groupby('bucket', observed=True)
+                .agg(predicted=('win_prob','mean'), actual=('uk_won','mean'), n=('uk_won','count'))
+                .reset_index().dropna(subset=['predicted','actual']))
+
+        _brier = ((_cal_games['win_prob'] - _cal_games['uk_won'])**2).mean()
+        _acc   = ((_cal_games['win_prob'] > 0.5) == _cal_games['uk_won'].astype(bool)).mean()
+
+        col_cal_left, col_cal_right = st.columns([1, 1])
+
+        with col_cal_left:
+            fig_cal = go.Figure()
+            fig_cal.add_trace(go.Scatter(x=[0,1], y=[0,1], mode='lines',
+                line=dict(color='#aaa', dash='dash', width=1.5), showlegend=False,
+                hoverinfo='skip'))
+            fig_cal.add_trace(go.Scatter(
+                x=_cal['predicted'], y=_cal['actual'],
+                mode='markers+text',
+                marker=dict(size=_cal['n']*5, color='#0033A0', opacity=0.75,
+                            line=dict(color='#ffffff', width=1)),
+                text=[f"n={int(n)}" for n in _cal['n']],
+                textposition='top right', textfont=dict(size=9, color='#444'),
+                hovertemplate='Predicted: %{x:.1%}<br>Actual: %{y:.1%}<extra></extra>',
+                showlegend=False,
+            ))
+            fig_cal.update_layout(
+                height=280,
+                margin=dict(t=10, b=40, l=50, r=10),
+                paper_bgcolor='#f8faff', plot_bgcolor='#ffffff',
+                font=dict(color='#1a2540', size=11),
+                xaxis=dict(title='Predicted Win %', tickformat='.0%', range=[0,1],
+                           gridcolor='#dce6f5', showgrid=True),
+                yaxis=dict(title='Actual Win Rate', tickformat='.0%', range=[0,1],
+                           gridcolor='#dce6f5', showgrid=True),
+            )
+            st.plotly_chart(fig_cal, width="stretch", config={'displayModeBar': False})
+            st.caption(f"Brier score: {_brier:.4f} · Directional accuracy: {_acc:.1%} · n={len(_cal_games)} games (Pope era)")
+
+        with col_cal_right:
+            _cal_display = _cal.copy()
+            _cal_display['Predicted'] = _cal_display['predicted'].map('{:.1%}'.format)
+            _cal_display['Actual']    = _cal_display['actual'].map('{:.1%}'.format)
+            _cal_display['N']         = _cal_display['n'].astype(int)
+            _cal_display['Gap']       = (_cal_display['predicted'] - _cal_display['actual']).map(lambda x: f'{x:+.1%}')
+            st.dataframe(
+                _cal_display[['bucket','Predicted','Actual','N','Gap']].rename(columns={'bucket':'Range'}),
+                width='stretch', hide_index=True,
+                column_config={
+                    'Range':     st.column_config.TextColumn(width='small'),
+                    'Predicted': st.column_config.TextColumn(width='small'),
+                    'Actual':    st.column_config.TextColumn(width='small'),
+                    'N':         st.column_config.NumberColumn(width='small', format='%d'),
+                    'Gap':       st.column_config.TextColumn(width='small'),
+                },
+            )
+            st.caption("Gap = predicted − actual. Negative = underconfident, positive = overconfident.")
+
+    except Exception as _cal_err:
+        st.caption(f"Calibration unavailable: {_cal_err}")
 
 # ── Season Game Log Tab (Item 9) ───────────────────────────────────────────────
 with tab_gamelog:
