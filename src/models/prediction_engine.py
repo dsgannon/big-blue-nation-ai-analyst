@@ -572,6 +572,19 @@ class PredictionEngine:
 
         uk_score = sum(p['points'] for p in projections)
 
+        # ── Defensive efficiency adjustment ───────────────────────────────────
+        # Player rolling averages are trained on all opponents, so they implicitly
+        # assume an average D1 defense (adj_d ≈ 100). Against elite defenses
+        # (low adj_d) we scale UK's raw projection down proportionally.
+        # Example: Florida adj_d=92 → factor=0.92 → 96 pts becomes ~88 pts.
+        AVG_D1_ADJ_D = 100.0
+        _opp_adv_for_scaling = self._get_opp_advanced_stats(opponent)
+        if _opp_adv_for_scaling and _opp_adv_for_scaling.get('adj_d'):
+            defense_factor = _opp_adv_for_scaling['adj_d'] / AVG_D1_ADJ_D
+            # Blend 60% defensive factor, 40% raw (don't fully override model)
+            defense_factor = 0.60 * defense_factor + 0.40 * 1.0
+            uk_score = uk_score * defense_factor
+
         injury_bpi_penalty   = len(injuries) * 0.4
         adjusted_bpi_defense = self.uk_bpi_defense + injury_bpi_penalty
         opp_score = self.predict_opponent_score(
@@ -1044,6 +1057,17 @@ class PredictionEngine:
                 projections.append(result)
 
         uk_score = sum(p['points'] for p in projections)
+
+        # ── Defensive efficiency adjustment ───────────────────────────────────
+        # Player rolling averages implicitly assume average D1 defense (adj_d≈100).
+        # Scale UK's projected score down proportionally against elite defenses.
+        # 60/40 blend preserves some model signal while correcting the bias.
+        AVG_D1_ADJ_D = 100.0
+        _opp_adv_for_scaling = self._get_opp_advanced_stats(opponent)
+        if _opp_adv_for_scaling and _opp_adv_for_scaling.get('adj_d'):
+            defense_factor = _opp_adv_for_scaling['adj_d'] / AVG_D1_ADJ_D
+            defense_factor = 0.60 * defense_factor + 0.40 * 1.0
+            uk_score = uk_score * defense_factor
 
         # ── Opponent score — injury-adjusted via BPI defense ───────────────────
         # Injury penalty: each missing non-walk-on increases effective BPI defense
