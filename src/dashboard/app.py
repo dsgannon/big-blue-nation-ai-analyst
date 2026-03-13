@@ -44,22 +44,19 @@ st.set_page_config(
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@300;400;500&display=swap');
 
   html, body, [data-testid="stAppViewContainer"] {
     font-family: 'Barlow', sans-serif;
-    background-color: #f2f5fb;
-    color: #1a2540;
+    background-color: #080e1c;
+    color: #dce8f8;
   }
 
-  /* Main content area */
-  [data-testid="stAppViewContainer"] > .main {
-    background-color: #f2f5fb;
-  }
+  [data-testid="stAppViewContainer"] > .main { background-color: #080e1c; }
   .block-container {
     padding-top: 1.5rem;
     padding-bottom: 2rem;
-    background-color: #f2f5fb;
+    background-color: #080e1c;
   }
 
   /* Hide Streamlit chrome */
@@ -67,26 +64,26 @@ st.markdown("""
   [data-testid="stStatusWidget"] { display: none; }
   footer { visibility: hidden; }
 
-  /* ── Sidebar — keep dark for pro sports contrast ── */
+  /* ── Sidebar ── */
   [data-testid="stSidebar"] {
-    background: #0d1526 !important;
-    border-right: 1px solid #1e2a4a;
+    background: #04091a !important;
+    border-right: 3px solid #CFB53B !important;
   }
   [data-testid="stSidebar"] * { color: #c8d4e8; }
-  [data-testid="stSidebar"] label { color: #8aa4cc !important; font-size: 0.82rem; }
+  [data-testid="stSidebar"] label { color: #CFB53B !important; font-size: 0.82rem; }
   [data-testid="stSidebar"] .sidebar-title {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 0.8rem;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: #4a90d9 !important;
+    color: #CFB53B !important;
     margin-bottom: 0.5rem;
   }
 
   /* ── Header ── */
   .bbn-header {
-    background: linear-gradient(135deg, #0033A0 0%, #001f6b 60%, #0a0e1a 100%);
-    border-bottom: 3px solid #0033A0;
+    background: linear-gradient(135deg, #0033A0 0%, #001a6e 55%, #00082e 100%);
+    border-bottom: 4px solid #CFB53B;
     padding: 1.5rem 2rem;
     margin: -1.5rem -1rem 2rem -1rem;
     display: flex;
@@ -95,72 +92,73 @@ st.markdown("""
   }
   .bbn-header h1 {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 2.4rem;
-    font-weight: 800;
-    letter-spacing: 0.04em;
+    font-size: 2.6rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: #ffffff;
     margin: 0; line-height: 1;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.6);
   }
   .bbn-header .subtitle {
     font-size: 0.85rem;
-    color: #a0bce0;
-    letter-spacing: 0.12em;
+    color: #CFB53B;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
     margin-top: 0.3rem;
   }
 
-  /* ── Section titles ── */
+  /* ── Section titles — GOLD ── */
   .section-title {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 1.05rem;
+    font-size: 1.1rem;
     font-weight: 700;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: #0033A0;
-    border-bottom: 2px solid #dce6f5;
+    color: #CFB53B;
+    border-bottom: 2px solid #1e3060;
     padding-bottom: 0.4rem;
     margin-bottom: 1rem;
   }
 
   /* ── Cards ── */
   .metric-card {
-    background: #ffffff;
-    border: 1px solid #dce6f5;
+    background: #0d1830;
+    border: 1px solid #1e3060;
     border-radius: 10px;
     padding: 1.2rem 1.5rem;
     text-align: center;
-    box-shadow: 0 1px 4px rgba(0,51,160,0.06);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
   }
   .metric-card .value {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 2.8rem;
     font-weight: 800;
     line-height: 1;
-    color: #0d1526;
+    color: #CFB53B;
   }
   .metric-card .label {
     font-size: 0.72rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #6080a8;
+    color: #7090b8;
     margin-top: 0.3rem;
   }
 
   .score-display {
-    background: #ffffff;
-    border: 1px solid #dce6f5;
+    background: #0d1830;
+    border: 1px solid #1e3060;
     border-radius: 10px;
     padding: 1.5rem;
     text-align: center;
-    box-shadow: 0 1px 4px rgba(0,51,160,0.06);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
   }
   .score-team {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 0.8rem;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: #6080a8;
+    color: #7090b8;
   }
   .score-pts {
     font-family: 'Barlow Condensed', sans-serif;
@@ -172,7 +170,7 @@ st.markdown("""
   /* ── Divider ── */
   .divider {
     border: none;
-    border-top: 1px solid #dce6f5;
+    border-top: 1px solid #1e3060;
     margin: 1.5rem 0;
   }
 
@@ -183,53 +181,105 @@ st.markdown("""
     font-size: 0.72rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: #6080a8;
+    color: #CFB53B;
     padding: 0.4rem 0.6rem;
-    border-bottom: 2px solid #dce6f5;
+    border-bottom: 2px solid #1e3060;
     text-align: right;
-    background: #f8faff;
+    background: #0a1220;
   }
   .val-table th:first-child { text-align: left; }
   .val-table td {
     padding: 0.45rem 0.6rem;
     text-align: right;
-    border-bottom: 1px solid #eef2fa;
-    color: #2a3a5c;
+    border-bottom: 1px solid #111e38;
+    color: #c8d4e8;
   }
-  .val-table td:first-child { text-align: left; color: #0d1526; font-weight: 500; }
-  .val-good { color: #1a7a4a; font-weight: 600; }
-  .val-bad  { color: #c0392b; font-weight: 600; }
+  .val-table td:first-child { text-align: left; color: #e8edf8; font-weight: 500; }
+  .val-good { color: #4cdf8a; font-weight: 600; }
+  .val-bad  { color: #e05c5c; font-weight: 600; }
 
   /* ── Tabs ── */
   .stTabs [data-baseweb="tab-list"] {
     gap: 6px;
-    border-bottom: 2px solid #dce6f5;
+    border-bottom: 2px solid #1e3060;
     padding-bottom: 0;
     background: transparent;
   }
   .stTabs [data-baseweb="tab"] {
-    background-color: #eef2fa;
-    color: #4a6080;
+    background-color: #0d1830;
+    color: #7090b8;
     padding: 9px 18px;
     border-radius: 8px 8px 0 0;
-    border: 1px solid #dce6f5;
+    border: 1px solid #1e3060;
     border-bottom: none;
     font-weight: 600;
     font-size: 0.88rem;
   }
   .stTabs [aria-selected="true"] {
     background-color: #0033A0;
-    color: #ffffff;
+    color: #CFB53B;
     border-color: #0033A0;
   }
   .stTabs [data-baseweb="tab"]:hover:not([aria-selected="true"]) {
-    background-color: #dce6f5;
-    color: #0033A0;
+    background-color: #152040;
+    color: #CFB53B;
   }
 
-  /* ── Streamlit native widget overrides for light mode ── */
-  .stSlider [data-baseweb="slider"] { }
-  .stDataFrame { border: 1px solid #dce6f5; border-radius: 8px; overflow: hidden; }
+  /* ── Streamlit native overrides ── */
+  .stDataFrame { border: 1px solid #1e3060; border-radius: 8px; overflow: hidden; }
+  [data-testid="stMetric"] {
+    background: #0d1830 !important;
+    border: 1px solid #1e3060 !important;
+    border-radius: 8px !important;
+    padding: 0.8rem !important;
+  }
+  [data-testid="stMetricValue"] { color: #CFB53B !important; font-family: 'Barlow Condensed', sans-serif !important; }
+  [data-testid="stMetricLabel"] { color: #7090b8 !important; }
+
+  /* ── Chat ── */
+  [data-testid="stChatMessage"] {
+    background: #0d1830 !important;
+    border: 1px solid #1e3060 !important;
+    border-radius: 10px !important;
+    margin-bottom: 0.5rem !important;
+  }
+  [data-testid="stChatMessageContent"] p {
+    color: #dce8f8 !important;
+    font-size: 0.95rem !important;
+    line-height: 1.6 !important;
+  }
+  [data-testid="stChatInput"] textarea {
+    background: #0d1830 !important;
+    color: #dce8f8 !important;
+    border: 1px solid #1e3060 !important;
+  }
+  [data-testid="stChatInput"] { background: #0d1830 !important; }
+
+  /* ── Buttons ── */
+  .stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #0033A0, #001a6e) !important;
+    color: #CFB53B !important;
+    border: 2px solid #CFB53B !important;
+    font-family: 'Barlow Condensed', sans-serif !important;
+    font-weight: 800 !important;
+    font-size: 1rem !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+  }
+  .stButton > button[kind="primary"]:hover {
+    background: #CFB53B !important;
+    color: #0033A0 !important;
+  }
+  .stButton > button {
+    background: #0d1830 !important;
+    color: #c8d4e8 !important;
+    border: 1px solid #1e3060 !important;
+  }
+  .stButton > button:hover {
+    border-color: #CFB53B !important;
+    color: #CFB53B !important;
+    background: #0d1830 !important;
+  }
 
 </style>
 """, unsafe_allow_html=True)
@@ -457,18 +507,18 @@ with st.sidebar:
         venue_icon  = '🏟️' if auto_neutral else ('🏠' if auto_is_home else '✈️')
         opp_logo    = get_espn_logo_url(auto_opponent)
         logo_html   = f'<img src="{opp_logo}" style="width:36px;height:36px;object-fit:contain;margin-right:0.5rem">' if opp_logo else ''
-        today_badge = '<span style="background:#0033A0;color:#0d1526;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;padding:0.1rem 0.4rem;border-radius:3px;margin-left:0.4rem">TODAY</span>' if _game_today else ''
+        today_badge = '<span style="background:#CFB53B;color:#0033A0;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;padding:0.1rem 0.4rem;border-radius:3px;margin-left:0.4rem">TODAY</span>' if _game_today else ''
         st.markdown(f"""
-        <div style="background:#ffffff;border:1px solid {'#0033A0' if _game_today else '#1e2a4a'};border-radius:6px;
+        <div style="background:#0d1830;border:1px solid {'#CFB53B' if _game_today else '#1e3060'};border-radius:6px;
                     padding:0.8rem 1rem;margin-bottom:1rem">
         <div style="font-family:'Barlow Condensed';font-size:0.7rem;letter-spacing:0.12em;
-                    text-transform:uppercase;color:#4a90d9">Next Game{today_badge}</div>
+                    text-transform:uppercase;color:#CFB53B">Next Game{today_badge}</div>
         <div style="display:flex;align-items:center;margin-top:0.4rem">
             {logo_html}
             <div>
-                <div style="font-weight:600;color:#0d1526">{venue_icon} vs {auto_opponent}</div>
-                <div style="font-size:0.75rem;color:#6080a8;margin-top:0.1rem">{game_str}</div>
-                <div style="font-size:0.75rem;color:#6080a8">{auto_venue}</div>
+                <div style="font-weight:600;color:#dce8f8">{venue_icon} vs {auto_opponent}</div>
+                <div style="font-size:0.75rem;color:#7090b8;margin-top:0.1rem">{game_str}</div>
+                <div style="font-size:0.75rem;color:#7090b8">{auto_venue}</div>
             </div>
         </div>
         </div>
@@ -523,21 +573,21 @@ with st.sidebar:
         uk_ml_str  = f"{game_odds['uk_moneyline']:+d}" if game_odds.get('uk_moneyline') is not None else "N/A"
         spread_color = "#4caf7d" if game_odds.get('spread') is not None and game_odds['spread'] < 0 else "#e05c5c"
         st.markdown(f"""
-        <div style="background:#ffffff;border:1px solid #dce6f5;border-radius:6px;
+        <div style="background:#0d1830;border:1px solid #1e3060;border-radius:6px;
                     padding:0.7rem 0.9rem;font-size:0.83rem">
           <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem">
-            <span style="color:#6080a8">Spread (UK)</span>
+            <span style="color:#7090b8">Spread (UK)</span>
             <span style="color:{spread_color};font-weight:700">{spread_str}</span>
           </div>
           <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem">
-            <span style="color:#6080a8">Over/Under</span>
-            <span style="color:#0d1526;font-weight:600">{ou_str}</span>
+            <span style="color:#7090b8">Over/Under</span>
+            <span style="color:#dce8f8;font-weight:600">{ou_str}</span>
           </div>
           <div style="display:flex;justify-content:space-between">
-            <span style="color:#6080a8">UK Moneyline</span>
-            <span style="color:#0d1526;font-weight:600">{uk_ml_str}</span>
+            <span style="color:#7090b8">UK Moneyline</span>
+            <span style="color:#dce8f8;font-weight:600">{uk_ml_str}</span>
           </div>
-          <div style="font-size:0.68rem;color:#3a4a6a;margin-top:0.4rem">{game_odds.get('provider','')}</div>
+          <div style="font-size:0.68rem;color:#5a7090;margin-top:0.4rem">{game_odds.get('provider','')}</div>
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -552,9 +602,9 @@ uk_rec = load_uk_record()
 if uk_rec:
     record_html = f"""
     <div style="display:flex;gap:0.6rem;margin-top:0.5rem;align-items:center">
-      <span style="background:#0a1a30;border:1px solid #1e3a6a;border-radius:4px;
+      <span style="background:#0a1830;border:1px solid #CFB53B;border-radius:4px;
                    padding:0.15rem 0.55rem;font-family:'Barlow Condensed',sans-serif;
-                   font-size:1rem;color:#ffffff;font-weight:700;letter-spacing:0.04em">
+                   font-size:1rem;color:#CFB53B;font-weight:700;letter-spacing:0.04em">
         {uk_rec['record']}
       </span>
       <span style="background:{uk_rec['streak_bg']};border:1px solid {uk_rec['streak_border']};
@@ -579,12 +629,12 @@ if _game_today and next_game:
         _gtime = "Today"
     _opp = auto_opponent if next_game else ""
     game_day_banner = f"""
-    <div style="background:linear-gradient(90deg,#0033A0,#001f6b);
-                border-bottom:2px solid #4a90d9;padding:0.5rem 2rem;
+    <div style="background:linear-gradient(90deg,#0033A0,#001a6e);
+                border-bottom:3px solid #CFB53B;padding:0.5rem 2rem;
                 margin:-1.5rem -1rem 0 -1rem;
                 display:flex;align-items:center;gap:0.8rem">
-        <span style="font-family:'Barlow Condensed';font-size:1rem;font-weight:800;
-                     letter-spacing:0.15em;text-transform:uppercase;color:#ffffff">
+        <span style="font-family:'Barlow Condensed';font-size:1rem;font-weight:900;
+                     letter-spacing:0.2em;text-transform:uppercase;color:#CFB53B">
             🏀 GAME DAY
         </span>
         <span style="font-size:0.85rem;color:#a0c4f0">
@@ -686,23 +736,23 @@ with tab_game:
         fig = go.Figure(go.Indicator(
             mode  = "gauge+number",
             value = win_pct,
-            number= {'suffix': '%', 'font': {'size': 36, 'color': '#0d1526',
+            number= {'suffix': '%', 'font': {'size': 36, 'color': '#CFB53B',
                                           'family': 'Barlow Condensed'}},
             title = {'text': "Kentucky Win Probability",
-                    'font': {'size': 13, 'color': '#6080a8', 'family': 'Barlow'}},
+                    'font': {'size': 13, 'color': '#7090b8', 'family': 'Barlow'}},
             gauge = {
-                'axis': {'range': [0, 100], 'tickcolor': '#6080a8',
-                     'tickfont': {'color': '#6080a8', 'size': 10}},
-                'bar':  {'color': '#0033A0', 'thickness': 0.25},
-                'bgcolor': '#eef2fa',
-                'bordercolor': '#dce6f5',
+                'axis': {'range': [0, 100], 'tickcolor': '#7090b8',
+                     'tickfont': {'color': '#7090b8', 'size': 10}},
+                'bar':  {'color': '#CFB53B', 'thickness': 0.25},
+                'bgcolor': '#0a1220',
+                'bordercolor': '#1e3060',
                 'steps': [
-                    {'range': [0,  40], 'color': '#fdf0f0'},
-                    {'range': [40, 60], 'color': '#fafaf0'},
-                    {'range': [60, 100],'color': '#edfaf3'},
+                    {'range': [0,  40], 'color': '#1a0808'},
+                    {'range': [40, 60], 'color': '#111810'},
+                    {'range': [60, 100],'color': '#081a10'},
                 ],
                 'threshold': {
-                    'line': {'color': '#0033A0', 'width': 2},
+                    'line': {'color': '#CFB53B', 'width': 2},
                     'thickness': 0.8,
                     'value': 50,
                 }
@@ -710,7 +760,7 @@ with tab_game:
         ))
         fig.update_layout(
             height=200, margin=dict(t=40, b=10, l=20, r=20),
-            paper_bgcolor='#f8faff', font_color='#1a2540',
+            paper_bgcolor='#080e1c', font_color='#dce8f8',
         )
         st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
 
@@ -722,7 +772,7 @@ with tab_game:
                font-weight:700;letter-spacing:0.05em">
         DIFF {diff_sign}{result['point_diff']}
     </span>
-    <span style="font-size:0.82rem;color:#6080a8">
+    <span style="font-size:0.82rem;color:#7090b8">
         ⚠️ OUT: {inj_str}
     </span>
 </div>
@@ -883,15 +933,15 @@ with tab_players:
 
             fig_sp.update_layout(
                 height=130 * n_rows + 40,
-                paper_bgcolor='#f8faff',
-                plot_bgcolor='#ffffff',
-                font=dict(color='#6080a8', size=10),
+                paper_bgcolor='#080e1c',
+                plot_bgcolor='#0d1830',
+                font=dict(color='#7090b8', size=10),
                 margin=dict(t=40, b=20, l=30, r=10),
             )
             for ax in fig_sp.layout:
                 if ax.startswith('xaxis') or ax.startswith('yaxis'):
                     fig_sp.layout[ax].update(
-                        gridcolor='#dce6f5',
+                        gridcolor='#1e3060',
                         showticklabels=False,
                         zeroline=False,
                     )
@@ -951,9 +1001,9 @@ with tab_sim:
         ))
         fig_curve.update_layout(
             height=220, margin=dict(t=10, b=40, l=50, r=20),
-            paper_bgcolor='#f8faff', plot_bgcolor='#ffffff', font_color='#6080a8',
-            xaxis=dict(title='Opponent BPI', gridcolor='#dce6f5', range=[0, 35]),
-            yaxis=dict(title='UK Win %', gridcolor='#dce6f5', range=[0, 100]),
+            paper_bgcolor='#080e1c', plot_bgcolor='#0d1830', font_color='#7090b8',
+            xaxis=dict(title='Opponent BPI', gridcolor='#1e3060', range=[0, 35]),
+            yaxis=dict(title='UK Win %', gridcolor='#1e3060', range=[0, 100]),
             showlegend=False,
         )
         st.plotly_chart(fig_curve, width="stretch", config={'displayModeBar': False})
@@ -979,22 +1029,22 @@ with tab_sim:
         margin_color   = "#4caf7d" if margin_needed <= 10 else "#f0a500" if margin_needed <= 20 else "#e05c5c"
 
         st.markdown(f"""
-        <div style="background:#ffffff;border:1px solid #dce6f5;border-radius:8px;
+        <div style="background:#0d1830;border:1px solid #1e3060;border-radius:8px;
                     padding:1rem 1.5rem;margin-top:0.5rem;display:flex;gap:2rem;align-items:center">
           <div style="text-align:center">
             <div style="font-family:'Barlow Condensed';font-size:2.4rem;font-weight:800;
                         color:{margin_color};line-height:1">{target_score}</div>
-            <div style="font-size:0.72rem;color:#6080a8;text-transform:uppercase;
+            <div style="font-size:0.72rem;color:#7090b8;text-transform:uppercase;
                         letter-spacing:0.1em">UK Score Needed</div>
           </div>
           <div style="text-align:center">
             <div style="font-family:'Barlow Condensed';font-size:2.4rem;font-weight:800;
                         color:{margin_color};line-height:1">+{margin_needed}</div>
-            <div style="font-size:0.72rem;color:#6080a8;text-transform:uppercase;
+            <div style="font-size:0.72rem;color:#7090b8;text-transform:uppercase;
                         letter-spacing:0.1em">Margin Required</div>
           </div>
-          <div style="font-size:0.9rem;color:#4a6080">
-            to reach <strong style="color:#0d1526">{target_prob}%</strong> win probability<br>
+          <div style="font-size:0.9rem;color:#a0b8d8">
+            to reach <strong style="color:#dce8f8">{target_prob}%</strong> win probability<br>
             vs projected opp score of <strong style="color:#e05c5c">{round(opp_score)}</strong>
           </div>
         </div>
@@ -1028,15 +1078,15 @@ with tab_sim:
         delta_color = "#4caf7d" if delta >= 0 else "#e05c5c"
 
         st.markdown(f"""
-        <div style="background:#ffffff;border:2px solid {wp_color};border-radius:8px;
+        <div style="background:#0d1830;border:2px solid {wp_color};border-radius:8px;
                     padding:1.2rem;text-align:center;margin-top:0.5rem">
           <div style="font-family:'Barlow Condensed';font-size:3rem;font-weight:800;
                       color:{wp_color};line-height:1">{adj_win_prob:.1f}%</div>
-          <div style="font-size:0.75rem;color:#6080a8;text-transform:uppercase;
+          <div style="font-size:0.75rem;color:#7090b8;text-transform:uppercase;
                       letter-spacing:0.1em;margin-top:0.2rem">Adjusted Win Prob</div>
           <div style="font-size:1rem;color:{delta_color};font-weight:700;
                       margin-top:0.4rem">{delta_str} vs baseline</div>
-          <div style="font-size:0.82rem;color:#4a6080;margin-top:0.5rem">
+          <div style="font-size:0.82rem;color:#a0b8d8;margin-top:0.5rem">
             UK {adj_uk_score:.0f} — Opp {opp_score:.0f}
           </div>
         </div>
@@ -1051,9 +1101,9 @@ with tab_sim:
             diff_str  = f"{diff:+d}" if diff != 0 else "—"
             st.markdown(f"""
             <div style="display:flex;justify-content:space-between;align-items:center;
-                        padding:0.25rem 0;border-bottom:1px solid #dce6f5;font-size:0.82rem">
-              <span style="color:#1a2540">{p['name'].split()[-1]}</span>
-              <span style="color:#6080a8">{base} pts</span>
+                        padding:0.25rem 0;border-bottom:1px solid #1e3060;font-size:0.82rem">
+              <span style="color:#dce8f8">{p['name'].split()[-1]}</span>
+              <span style="color:#7090b8">{base} pts</span>
               <span style="color:{bar_color};font-weight:700;width:40px;text-align:right">{diff_str}</span>
             </div>
             """, unsafe_allow_html=True)
@@ -1121,9 +1171,9 @@ with tab_models:
                 'minutes_season_avg': 'Season min avg',
             }
             _labels = [_label_map.get(f, f) for f in _top_feats]
-            _colors = ['#0033A0' if v >= _top_vals[0] * 0.6
+            _colors = ['#CFB53B' if v >= _top_vals[0] * 0.6
                        else '#4a90d9' if v >= _top_vals[0] * 0.3
-                       else '#a0bcd8'
+                       else '#2a4870'
                        for v in _top_vals]
 
             fig_fi = go.Figure(go.Bar(
@@ -1136,10 +1186,11 @@ with tab_models:
             fig_fi.update_layout(
                 height=420,
                 margin=dict(t=10, b=20, l=180, r=30),
-                paper_bgcolor='#f8faff', plot_bgcolor='#ffffff',
-                font=dict(color='#1a2540', size=11),
-                xaxis=dict(title='Importance', gridcolor='#dce6f5', showgrid=True),
-                yaxis=dict(gridcolor='#dce6f5'),
+                paper_bgcolor='#080e1c', plot_bgcolor='#0d1830',
+                font=dict(color='#dce8f8', size=11),
+                xaxis=dict(title='Importance', gridcolor='#1e3060', showgrid=True,
+                           color='#7090b8'),
+                yaxis=dict(gridcolor='#1e3060', color='#dce8f8'),
             )
             st.plotly_chart(fig_fi, width="stretch", config={'displayModeBar': False})
             st.caption("Average importance across Guard and F/C models. Darker = higher impact on projected points.")
@@ -1201,10 +1252,10 @@ with tab_models:
             fig_acc.update_layout(
                 height=240, barmode='group',
                 margin=dict(t=10, b=40, l=40, r=10),
-                paper_bgcolor='#f8faff', plot_bgcolor='#ffffff',
-                font_color='#6080a8',
-                xaxis=dict(gridcolor='#dce6f5'),
-                yaxis=dict(title='Pred − Actual', gridcolor='#dce6f5'),
+                paper_bgcolor='#080e1c', plot_bgcolor='#0d1830',
+                font_color='#7090b8',
+                xaxis=dict(gridcolor='#1e3060'),
+                yaxis=dict(title='Pred − Actual', gridcolor='#1e3060'),
                 legend=dict(font=dict(size=10), bgcolor='rgba(0,0,0,0)'),
             )
             st.plotly_chart(fig_acc, width="stretch", config={'displayModeBar': False})
@@ -1257,13 +1308,13 @@ with tab_models:
                 ))
                 fig_pace.update_layout(
                     height=280, margin=dict(t=20, b=40, l=50, r=20),
-                    paper_bgcolor='#f8faff', plot_bgcolor='#ffffff',
-                    font=dict(color='#6080a8', size=11),
+                    paper_bgcolor='#080e1c', plot_bgcolor='#0d1830',
+                    font=dict(color='#7090b8', size=11),
                     showlegend=False,
                     title=dict(text=f'Possessions/Game · Avg {pace_avg:.0f}',
-                               font=dict(size=12, color='#1a2540'), x=0),
-                    yaxis=dict(title='Poss', gridcolor='#dce6f5', range=[55, 90]),
-                    xaxis=dict(gridcolor='#dce6f5', tickformat='%b %d'),
+                               font=dict(size=12, color='#CFB53B'), x=0),
+                    yaxis=dict(title='Poss', gridcolor='#1e3060', range=[55, 90]),
+                    xaxis=dict(gridcolor='#1e3060', tickformat='%b %d'),
                 )
                 st.plotly_chart(fig_pace, width="stretch", config={'displayModeBar': False})
 
@@ -1282,13 +1333,13 @@ with tab_models:
                 ))
                 fig_eff.update_layout(
                     height=280, margin=dict(t=20, b=40, l=50, r=20),
-                    paper_bgcolor='#f8faff', plot_bgcolor='#ffffff',
-                    font=dict(color='#6080a8', size=11),
+                    paper_bgcolor='#080e1c', plot_bgcolor='#0d1830',
+                    font=dict(color='#7090b8', size=11),
                     showlegend=False,
                     title=dict(text=f'Off Efficiency (pts/100 poss) · Avg {eff_avg:.1f}',
-                               font=dict(size=12, color='#1a2540'), x=0),
-                    yaxis=dict(title='Pts/100', gridcolor='#dce6f5'),
-                    xaxis=dict(gridcolor='#dce6f5', tickformat='%b %d'),
+                               font=dict(size=12, color='#CFB53B'), x=0),
+                    yaxis=dict(title='Pts/100', gridcolor='#1e3060'),
+                    xaxis=dict(gridcolor='#1e3060', tickformat='%b %d'),
                 )
                 st.plotly_chart(fig_eff, width="stretch", config={'displayModeBar': False})
         else:
@@ -1407,12 +1458,12 @@ with tab_models:
             fig_cal.update_layout(
                 height=280,
                 margin=dict(t=10, b=40, l=50, r=10),
-                paper_bgcolor='#f8faff', plot_bgcolor='#ffffff',
-                font=dict(color='#1a2540', size=11),
+                paper_bgcolor='#080e1c', plot_bgcolor='#0d1830',
+                font=dict(color='#dce8f8', size=11),
                 xaxis=dict(title='Predicted Win %', tickformat='.0%', range=[0,1],
-                           gridcolor='#dce6f5', showgrid=True),
+                           gridcolor='#1e3060', showgrid=True),
                 yaxis=dict(title='Actual Win Rate', tickformat='.0%', range=[0,1],
-                           gridcolor='#dce6f5', showgrid=True),
+                           gridcolor='#1e3060', showgrid=True),
             )
             st.plotly_chart(fig_cal, width="stretch", config={'displayModeBar': False})
             st.caption(f"Brier score: {_brier:.4f} · Directional accuracy: {_acc:.1%} · n={len(_cal_games)} games (Pope era)")
@@ -1593,8 +1644,8 @@ with tab_chat:
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="text-align:center;color:#2a3a5c;font-size:0.75rem;
+<div style="text-align:center;color:#5a7090;font-size:0.75rem;
             letter-spacing:0.08em;text-transform:uppercase;padding:0.5rem 0">
-  Big Blue Nation AI Analyst · Built with XGBoost + Streamlit · Go Cats 🐾
+  Big Blue Nation AI Analyst · CatBoost + Streamlit · Go Cats 🐾
 </div>
 """, unsafe_allow_html=True)
