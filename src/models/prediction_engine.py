@@ -518,7 +518,8 @@ class PredictionEngine:
     def predict_game_with_ci(self, opponent, is_home, net_rank, opp_bpi=10.0,
                               injuries=None, days_rest=3, is_back_to_back=0,
                               roster=None, z: float = 1.28,
-                              neutral_site: int = 0) -> dict:
+                              neutral_site: int = 0,
+                              vegas_spread: float | None = None) -> dict:
         """
         Full game prediction with confidence intervals on every player projection.
 
@@ -601,6 +602,7 @@ class PredictionEngine:
                 neutral_site=neutral_site,
                 opp_adj_em=opp_adv['adj_em'],
                 opp_tempo=opp_adv['tempo'],
+                vegas_spread=vegas_spread,
             )
         elif self._win_prob_v2:
             win_prob = self._win_prob_logistic(projections, opp_score, is_home)
@@ -940,7 +942,8 @@ class PredictionEngine:
     def _win_prob_pomeroy(self, uk_score: float, opp_score: float,
                           is_home: int, neutral_site: int = 0,
                           opp_adj_em: float | None = None,
-                          opp_tempo: float | None = None) -> float:
+                          opp_tempo: float | None = None,
+                          vegas_spread: float | None = None) -> float:
         """
         Pomeroy-style win probability using BartTorvik efficiency margins.
 
@@ -951,8 +954,11 @@ class PredictionEngine:
           3. Add home court adjustment (+/- 3.5 pts).
           4. Convert to win probability via logistic CDF with σ=11 pts
              (empirically derived standard deviation of CBB game outcomes).
-          5. Blend 65% Pomeroy / 35% projected score margin so that
-             in-game context (injuries, hot players) still influences the number.
+          5. Blend: when Vegas spread available → 45% Pomeroy / 30% projected /
+             25% Vegas implied. Otherwise → 65% Pomeroy / 35% projected.
+
+        Vegas spread convention: negative = UK favored (e.g. -7 means UK -7).
+        Implied WP = norm.cdf(-spread / σ), which already has home court baked in.
 
         Validated: UK (adj_em +19.65) vs avg team → 88.3% (barthag = 88.5% ✓)
         """
@@ -978,14 +984,24 @@ class PredictionEngine:
         if not neutral_site:
             pomeroy_margin += HOME_ADV_PTS if is_home else -HOME_ADV_PTS
 
-        # Projected margin from XGBoost score models
+        # Projected margin from score models
         proj_margin = uk_score - opp_score
 
-        # Blend: Pomeroy is the prior, projection is the update
+        # Model win probability (same calculation regardless of Vegas)
         blended_margin = 0.65 * pomeroy_margin + 0.35 * proj_margin
+        wp_model = float(norm.cdf(blended_margin / CBB_GAME_SIGMA))
 
-        # Win probability via normal CDF
-        win_prob = float(norm.cdf(blended_margin / CBB_GAME_SIGMA))
+        if vegas_spread is not None:
+            # Vegas implied win probability — spread already has home court baked in.
+            # Spread convention: negative means UK is favored (UK -7 → spread = -7).
+            # implied_wp = P(margin > 0) = norm.cdf(-spread / σ)
+            vegas_implied = float(norm.cdf(-vegas_spread / CBB_GAME_SIGMA))
+            vegas_implied = max(0.05, min(0.95, vegas_implied))
+            # Blend: 75% model, 25% Vegas
+            win_prob = 0.75 * wp_model + 0.25 * vegas_implied
+        else:
+            win_prob = wp_model
+
         return round(max(0.03, min(0.97, win_prob)), 3)
 
     def _win_prob_hybrid(self, uk_score, opp_score, opp_bpi, is_home, injuries):
@@ -1006,7 +1022,8 @@ class PredictionEngine:
 
     def predict_game(self, opponent, is_home, net_rank, opp_bpi=10.0,
                      injuries=None, days_rest=3, is_back_to_back=0,
-                     roster=None, neutral_site: int = 0):
+                     roster=None, neutral_site: int = 0,
+                     vegas_spread: float | None = None):
         """
         Full game prediction pipeline.
         Returns complete prediction dict with player projections and win probability.
@@ -1089,6 +1106,7 @@ class PredictionEngine:
                 neutral_site=neutral_site,
                 opp_adj_em=opp_adv['adj_em'],
                 opp_tempo=opp_adv['tempo'],
+                vegas_spread=vegas_spread,
             )
         elif self._win_prob_v2:
             win_prob = self._win_prob_logistic(projections, opp_score, is_home)

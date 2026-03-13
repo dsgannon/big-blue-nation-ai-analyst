@@ -666,6 +666,7 @@ if run_btn or st.session_state.result is None:
     with st.spinner("Running prediction models..."):
         try:
             engine = load_engine()
+            _vegas_spread = game_odds.get('spread') if game_odds else None
             result = engine.predict_game_with_ci(
                 opponent        = opponent,
                 is_home         = int(is_home),
@@ -675,6 +676,7 @@ if run_btn or st.session_state.result is None:
                 days_rest       = days_rest,
                 is_back_to_back = int(is_b2b),
                 neutral_site    = int(venue_selection == "Neutral"),
+                vegas_spread    = _vegas_spread,
             )
             st.session_state.result = result
         except Exception as e:
@@ -766,12 +768,20 @@ with tab_game:
 
     diff_color = "#4caf7d" if result['point_diff'] >= 0 else "#e05c5c"
     diff_sign  = "+" if result['point_diff'] >= 0 else ""
+    _vs = game_odds.get('spread') if game_odds else None
+    vegas_tag  = (
+        f'<span style="font-size:0.78rem;color:#CFB53B;font-weight:600">'
+        f'📊 Vegas blended (spread {_vs:+.1f})</span>'
+    ) if _vs is not None else (
+        '<span style="font-size:0.78rem;color:#5a7090">📊 No Vegas data — Pomeroy only</span>'
+    )
     st.markdown(f"""
-    <div style="display:flex;gap:2rem;margin:0.8rem 0 1.5rem;flex-wrap:wrap">
+    <div style="display:flex;gap:2rem;margin:0.8rem 0 1.5rem;flex-wrap:wrap;align-items:center">
         <span style="font-family:'Barlow Condensed';font-size:1rem;color:{diff_color};
                font-weight:700;letter-spacing:0.05em">
         DIFF {diff_sign}{result['point_diff']}
     </span>
+    {vegas_tag}
     <span style="font-size:0.82rem;color:#7090b8">
         ⚠️ OUT: {inj_str}
     </span>
